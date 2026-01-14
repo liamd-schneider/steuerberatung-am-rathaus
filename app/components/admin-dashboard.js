@@ -419,7 +419,7 @@ fetchData()
 <table border="0" cellpadding="0" cellspacing="0" style="margin: 25px 0;">
 <tr>
 <td style="background-color: #E3DAC9; border-radius: 4px; text-align: center;">
-<a href="https://steuerberatung-am-rathaus.vercel.app" target="_blank" style="display: inline-block; padding: 12px 30px; color: #333333; font-size: 16px; font-weight: bold; text-decoration: none;">Anmelden</a>
+<a href="https://steuerberatung-am-rathaus.vercel.app/login" target="_blank" style="display: inline-block; padding: 12px 30px; color: #333333; font-size: 16px; font-weight: bold; text-decoration: none;">Anmelden</a>
 </td>
 </tr>
 </table>
