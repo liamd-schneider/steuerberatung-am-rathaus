@@ -6,7 +6,7 @@ export default function Impressum() {
       {/* Header */}
       <header className=" ">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
-          <h1 className="text-2xl font-bold text-white">Steuerberatung am Rathaus</h1>
+          <h1 className="text-2xl font-bold text-white">Steuerberatung am Rathaus Steuerberatungsgesellschaft mbH</h1>
           <a
             href="/"
             className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md  text-white hover:text-black bg-[rgba(227,218,201,0.1)] hover:bg-[#E3DAC9] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#E3DAC9]"
@@ -24,7 +24,7 @@ export default function Impressum() {
           </div>
           <div className="border-t border-gray-200 px-4 py-5 sm:p-6">
             <div className="prose max-w-none">
-              <h3 className="text-lg font-medium text-white mb-4">Steuerberatung am Rathaus Steuerberatungs mbH</h3>
+              <h3 className="text-lg font-medium text-white mb-4">Steuerberatung am Rathaus Steuerberatungsgesellschaft mbH</h3>
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
                 <div className="bg-gray-50 p-4 rounded-lg">

@@ -6,6 +6,7 @@ import LocationSection from "./components/standort";
 import AppointmentBooking from "./components/terminbuchung";
 import ContactForm from "./components/contact";
 import Footer from "./components/footer";
+import OnlineSection from "./components/online";
 
 
 export default function Home() {
@@ -15,7 +16,8 @@ export default function Home() {
       <div id="start">
       <Landingpage />
       </div>
-      <div id="leistungen" className="pt-[50px] scroll-m-[80px]">
+      <OnlineSection />
+      <div id="leistungen" className="pt-[100px] scroll-m-[80px]">
         
       <Leistungen />
       </div>
