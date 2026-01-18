@@ -140,8 +140,7 @@ export default function ServicesSection() {
             <div className="absolute bottom-0 left-0 right-0 bg-[#E3DAC9] p-4">
               <h3 className="font-medium text-black mb-2">Steuererklärungen für Rentner</h3>
               <p className="text-sm text-black opacity-[74%]">
-                Existenzgründung einfach gemacht - wir kümmern uns um Sie, insbesondere auch bei nebenberuflicher
-                Selbstständigkeit.
+               Steuererklärungen für Rentner einfach gemacht - <br />entspannt durch die Steuererklärung.
               </p>
             </div>
           </div>

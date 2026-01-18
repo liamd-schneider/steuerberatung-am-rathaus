@@ -454,7 +454,7 @@ export default function ContactForm() {
       <div className="container mx-auto grid grid-cols-1 lg:grid-cols-2 gap-12">
         {/* Left Side: Contact Form */}
         <div>
-          <h3 className="text-[#E3DAC9] text-lg mb-2">Unsere Leistungen</h3>
+          <h3 className="text-[#E3DAC9] text-lg mb-2">Kontakt aufnehmen</h3>
           <h2 className="text-white text-3xl lg:text-4xl font-light leading-tight mb-8">
             Haben Sie Fragen? Wir helfen Ihnen gerne weiter.
           </h2>
@@ -588,27 +588,37 @@ export default function ContactForm() {
       </div>
 
       {showChat && (
-        <div className="fixed inset-0 bg-[#747171] flex items-center justify-center z-50">
+        <div className="fixed inset-0 bg-[#747171] flex flex-col items-center justify-center z-50 p-4">
           <button
             onClick={toggleChat}
-            className="absolute top-4 right-4 bg-[#E3DAC9] rounded-full p-2  transition"
+            className="absolute top-4 right-4 bg-[#E3DAC9] rounded-full p-2 transition hover:bg-[#d6cbb7]"
             aria-label="Schließen"
           >
-            <X className="w-5 h-5  text-black" />
+            <X className="w-5 h-5 text-black" />
           </button>
           <button
             onClick={toggleChat}
-            className="absolute top-6 left-6 bg-[rgba(227,218,201,0.1)] border-2 border-[#E3DAC9] rounded-md p-2  transition hover:bg-[#E3DAC9] hover:text-black"
+            className="absolute top-6 left-6 bg-[rgba(227,218,201,0.1)] border-2 border-[#E3DAC9] rounded-md px-4 py-2 transition hover:bg-[#E3DAC9] hover:text-black text-white"
             aria-label="Schließen"
           >
             Zurück
           </button>
-          <div className="relative bg-white rounded-lg shadow-lg w-[90%] h-[80%]">
+          
+          <div className="relative bg-white rounded-lg shadow-lg w-[90%] h-[70%] mb-4">
             <iframe
               src="https://cdn.botpress.cloud/webchat/v2.3/shareable.html?configUrl=https://files.bpcontent.cloud/2025/04/08/12/20250408120830-64424DW9.json"
               title="KI Assistent"
               className="w-full h-full rounded-lg"
             ></iframe>
+          </div>
+
+          {/* Disclaimer below chat */}
+          <div className="bg-yellow-900/30 border border-yellow-600/40 rounded-lg p-4 flex items-start gap-3 max-w-[90%]">
+            <AlertTriangle className="h-5 w-5 text-yellow-400 flex-shrink-0 mt-0.5" />
+            <p className="text-yellow-100 text-sm">
+              <strong>Hinweis:</strong> Der KI-Assistent dient der ersten Orientierung. Es können Fehlinformationen entstehen. 
+              Wir übernehmen keine Haftung für die Richtigkeit der Antworten. Für verbindliche Auskünfte kontaktieren Sie uns bitte direkt.
+            </p>
           </div>
         </div>
       )}
