@@ -1,6 +1,26 @@
 "use server"
 
-import { client, generateUniqueKey, generatePassword, generateCustomerNumber, parseFormText } from "./lib"
+import { 
+  client, 
+  generateUniqueKey, 
+  generatePassword, 
+  generateCustomerNumber,
+  validateAndUpdateHighestCustomerNumber,
+  isCustomerNumberTaken,
+  parseFormText,
+  // Kategorie-Funktionen
+  getCategories,
+  getMainCategories,
+  getSubcategories,
+  createCategory,
+  updateCategory,
+  deleteCategory,
+  assignCustomerToCategory,
+  removeCustomerFromCategory,
+  getCustomersByCategory,
+  moveCategoryToParent,
+  getCustomersByCategories
+} from "./lib"
 import { revalidatePath } from "next/cache"
 
 // Authentication
@@ -30,14 +50,19 @@ export async function getCustomers() {
         lastName,
         email,
         kundennummer,
-        password,
+        passwort,
         isAdmin,
         assignedForms,
         ausgefuellteformulare,
         uploadedFiles,
-        categories[]-> {
+        category[]-> {
           _id,
-          name
+          name,
+          description,
+          parentCategory-> {
+            _id,
+            name
+          }
         }
       }
     `)
@@ -52,19 +77,39 @@ export async function createCustomer(formData) {
     const firstName = formData.get("firstName")
     const lastName = formData.get("lastName")
     const email = formData.get("email")
+    const kundennummer = formData.get("kundennummer")
+
+    const existingCustomer = await client.fetch(`*[_type == "userForm" && email == $email][0]`, {
+      email,
+    })
+
+    if (existingCustomer) {
+      throw new Error("Ein Kunde mit dieser E-Mail-Adresse existiert bereits")
+    }
+
+    let finalKundennummer
+    if (kundennummer) {
+      const isTaken = await isCustomerNumberTaken(kundennummer)
+      if (isTaken) {
+        throw new Error("Diese Kundennummer ist bereits vergeben")
+      }
+      finalKundennummer = await validateAndUpdateHighestCustomerNumber(kundennummer)
+    } else {
+      finalKundennummer = await generateCustomerNumber()
+    }
 
     const newCustomer = {
       _type: "userForm",
       firstName,
       lastName,
       email,
-      password: generatePassword(),
-      kundennummer: generateCustomerNumber(),
+      passwort: generatePassword(),
+      kundennummer: finalKundennummer,
       isAdmin: false,
       assignedForms: [],
       ausgefuellteformulare: [],
       uploadedFiles: [],
-      categories: [],
+      category: [],
     }
 
     const result = await client.create(newCustomer)
@@ -81,14 +126,25 @@ export async function updateCustomer(customerId, formData) {
     const firstName = formData.get("firstName")
     const lastName = formData.get("lastName")
     const email = formData.get("email")
+    const kundennummer = formData.get("kundennummer")
+
+    const updateData = {
+      firstName,
+      lastName,
+      email,
+    }
+
+    if (kundennummer) {
+      const isTaken = await isCustomerNumberTaken(kundennummer, customerId)
+      if (isTaken) {
+        throw new Error("Diese Kundennummer ist bereits vergeben")
+      }
+      updateData.kundennummer = await validateAndUpdateHighestCustomerNumber(kundennummer)
+    }
 
     const result = await client
       .patch(customerId)
-      .set({
-        firstName,
-        lastName,
-        email,
-      })
+      .set(updateData)
       .commit()
 
     revalidatePath("/admin")
@@ -371,53 +427,87 @@ export async function getAppointments() {
   }
 }
 
-// Categories
-export async function getCategories() {
+// ============================================================
+// KATEGORIE-ACTIONS MIT UNTERKATEGORIEN
+// ============================================================
+
+// Hole alle Kategorien
+export async function getAllCategories() {
   try {
-    return await client.fetch(`*[_type == "category"] | order(name asc) {
-      _id,
-      name
-    }`)
+    const categories = await getCategories()
+    return categories
   } catch (error) {
     console.error("Error fetching categories:", error)
     return []
   }
 }
 
-export async function createCategory(name) {
+// Hole nur Hauptkategorien
+export async function getMainCategoriesAction() {
   try {
-    const newCategory = {
-      _type: "category",
-      name: name,
-    }
+    const mainCategories = await getMainCategories()
+    return mainCategories
+  } catch (error) {
+    console.error("Error fetching main categories:", error)
+    return []
+  }
+}
 
-    const result = await client.create(newCategory)
+// Hole Unterkategorien für eine Kategorie
+export async function getSubcategoriesAction(parentCategoryId) {
+  try {
+    const subcategories = await getSubcategories(parentCategoryId)
+    return subcategories
+  } catch (error) {
+    console.error("Error fetching subcategories:", error)
+    return []
+  }
+}
+
+// Erstelle neue Kategorie (Haupt- oder Unterkategorie)
+export async function createCategoryAction(name, description = "", parentCategoryId = null) {
+  try {
+    const newCategory = await createCategory(name, description, parentCategoryId)
     revalidatePath("/admin")
-    return { success: true, category: result }
+    return { success: true, category: newCategory }
   } catch (error) {
     console.error("Error creating category:", error)
     return { success: false, error: error.message }
   }
 }
 
-export async function assignCustomerToCategory(customerId, categoryId) {
+// Aktualisiere Kategorie
+export async function updateCategoryAction(categoryId, data) {
   try {
-    const customer = await client.fetch(
-      `*[_type == "userForm" && _id == $customerId][0]{
-        categories
-      }`,
-      { customerId },
-    )
+    const updated = await updateCategory(categoryId, data)
+    revalidatePath("/admin")
+    return { success: true, category: updated }
+  } catch (error) {
+    console.error("Error updating category:", error)
+    return { success: false, error: error.message }
+  }
+}
 
-    if (customer.categories && customer.categories.some((cat) => cat._ref === categoryId)) {
+// Lösche Kategorie
+export async function deleteCategoryAction(categoryId) {
+  try {
+    await deleteCategory(categoryId)
+    revalidatePath("/admin")
+    return { success: true }
+  } catch (error) {
+    console.error("Error deleting category:", error)
+    return { success: false, error: error.message }
+  }
+}
+
+// Weise Kunde einer Kategorie zu
+export async function assignCustomerToCategoryAction(customerId, categoryId) {
+  try {
+    const result = await assignCustomerToCategory(customerId, categoryId)
+    
+    if (result.alreadyAssigned) {
       return { success: false, error: "Kunde ist bereits dieser Kategorie zugeordnet" }
     }
-
-    const result = await client
-      .patch(customerId)
-      .setIfMissing({ categories: [] })
-      .append("categories", [{ _type: "reference", _ref: categoryId, _key: generateUniqueKey() }])
-      .commit()
 
     revalidatePath("/admin")
     return { success: true, result }
@@ -427,26 +517,53 @@ export async function assignCustomerToCategory(customerId, categoryId) {
   }
 }
 
-export async function removeCustomerFromCategory(customerId, categoryId) {
+// Entferne Kunde aus Kategorie
+export async function removeCustomerFromCategoryAction(customerId, categoryId) {
   try {
-    const customer = await client.fetch(
-      `*[_type == "userForm" && _id == $customerId][0]{
-        categories
-      }`,
-      { customerId },
-    )
-
-    if (!customer.categories) {
-      return { success: false, error: "Kunde ist keiner Kategorie zugeordnet" }
+    const result = await removeCustomerFromCategory(customerId, categoryId)
+    
+    if (result.notAssigned) {
+      return { success: false, error: "Kunde ist dieser Kategorie nicht zugeordnet" }
     }
 
-    const updatedCategories = customer.categories.filter((cat) => cat._ref !== categoryId)
-
-    const result = await client.patch(customerId).set({ categories: updatedCategories }).commit()
     revalidatePath("/admin")
     return { success: true, result }
   } catch (error) {
     console.error("Error removing from category:", error)
     return { success: false, error: error.message }
+  }
+}
+
+// Hole Kunden einer Kategorie
+export async function getCustomersByCategoryAction(categoryId, includeSubcategories = false) {
+  try {
+    const customers = await getCustomersByCategory(categoryId, includeSubcategories)
+    return customers
+  } catch (error) {
+    console.error("Error fetching customers by category:", error)
+    return []
+  }
+}
+
+// Verschiebe Kategorie
+export async function moveCategoryAction(categoryId, newParentCategoryId) {
+  try {
+    await moveCategoryToParent(categoryId, newParentCategoryId)
+    revalidatePath("/admin")
+    return { success: true }
+  } catch (error) {
+    console.error("Error moving category:", error)
+    return { success: false, error: error.message }
+  }
+}
+
+// Filtere Kunden nach mehreren Kategorien
+export async function getCustomersByMultipleCategoriesAction(categoryIds, matchAll = false) {
+  try {
+    const customers = await getCustomersByCategories(categoryIds, matchAll)
+    return customers
+  } catch (error) {
+    console.error("Error filtering customers:", error)
+    return []
   }
 }

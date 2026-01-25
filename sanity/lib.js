@@ -1,7 +1,6 @@
 import { createClient } from "@sanity/client"
 import { jsPDF } from "jspdf"
 import "jspdf-autotable"
-// import { sendCustomerWelcomeEmail } from "@/lib/email"
 
 // Initialize Sanity client
 export const client = createClient({
@@ -27,10 +26,77 @@ export function generatePassword(length = 8) {
   return password
 }
 
-export function generateCustomerNumber() {
-  const prefix = "KD"
-  const randomNum = Math.floor(10000 + Math.random() * 90000)
-  return `${prefix}${randomNum}`
+// NEUE SEQUENZIELLE KUNDENNUMMER-GENERIERUNG MIT VALIDIERUNG
+export async function generateCustomerNumber() {
+  try {
+    let counter = await client.fetch(`*[_type == "customerCounter"][0]`)
+    
+    if (!counter) {
+      counter = await client.create({
+        _type: "customerCounter",
+        currentNumber: 3400
+      })
+    }
+    
+    const newNumber = counter.currentNumber
+    
+    await client
+      .patch(counter._id)
+      .set({ currentNumber: newNumber + 1 })
+      .commit()
+    
+    return newNumber.toString()
+  } catch (error) {
+    console.error("Error generating customer number:", error)
+    throw new Error("Fehler beim Generieren der Kundennummer")
+  }
+}
+
+export async function validateAndUpdateHighestCustomerNumber(newCustomerNumber) {
+  try {
+    const customerNumberInt = parseInt(newCustomerNumber)
+    
+    if (isNaN(customerNumberInt)) {
+      throw new Error("Ungültige Kundennummer")
+    }
+    
+    let counter = await client.fetch(`*[_type == "customerCounter"][0]`)
+    
+    if (!counter) {
+      counter = await client.create({
+        _type: "customerCounter",
+        currentNumber: Math.max(3400, customerNumberInt + 1)
+      })
+    } else if (customerNumberInt >= counter.currentNumber) {
+      await client
+        .patch(counter._id)
+        .set({ currentNumber: customerNumberInt + 1 })
+        .commit()
+    }
+    
+    return customerNumberInt.toString()
+  } catch (error) {
+    console.error("Error validating customer number:", error)
+    throw new Error("Fehler beim Validieren der Kundennummer")
+  }
+}
+
+export async function isCustomerNumberTaken(customerNumber, excludeCustomerId = null) {
+  try {
+    const query = excludeCustomerId 
+      ? `*[_type == "userForm" && kundennummer == $customerNumber && _id != $excludeCustomerId][0]`
+      : `*[_type == "userForm" && kundennummer == $customerNumber][0]`
+    
+    const params = excludeCustomerId 
+      ? { customerNumber, excludeCustomerId }
+      : { customerNumber }
+    
+    const existing = await client.fetch(query, params)
+    return !!existing
+  } catch (error) {
+    console.error("Error checking customer number:", error)
+    throw new Error("Fehler beim Prüfen der Kundennummer")
+  }
 }
 
 // Parse form text into structured form object
@@ -38,10 +104,8 @@ export function parseFormText(formText) {
   if (!formText) return null
 
   try {
-    // Try to parse as JSON first
     return JSON.parse(formText)
   } catch {
-    // If not JSON, parse as structured text
     const lines = formText.split("\n").filter((line) => line.trim())
     const form = {
       title: lines[0] || "Formular",
@@ -91,7 +155,7 @@ export function parseFormText(formText) {
   }
 }
 
-// Customer management functions - WICHTIG: passwort statt password verwenden
+// Customer management functions
 export async function getCustomers() {
   return client.fetch(`
     *[_type == "userForm"] | order(firstName asc) {
@@ -107,7 +171,12 @@ export async function getCustomers() {
       uploadedFiles,
       category[]-> {
         _id,
-        name
+        name,
+        description,
+        parentCategory-> {
+          _id,
+          name
+        }
       }
     }
   `)
@@ -115,7 +184,6 @@ export async function getCustomers() {
 
 export async function createCustomer(customerData) {
   try {
-    // Check if customer with email already exists
     const existingCustomer = await client.fetch(`*[_type == "userForm" && email == $email][0]`, {
       email: customerData.email,
     })
@@ -124,13 +192,24 @@ export async function createCustomer(customerData) {
       throw new Error("Ein Kunde mit dieser E-Mail-Adresse existiert bereits")
     }
 
+    let kundennummer
+    if (customerData.kundennummer) {
+      const isTaken = await isCustomerNumberTaken(customerData.kundennummer)
+      if (isTaken) {
+        throw new Error("Diese Kundennummer ist bereits vergeben")
+      }
+      kundennummer = await validateAndUpdateHighestCustomerNumber(customerData.kundennummer)
+    } else {
+      kundennummer = await generateCustomerNumber()
+    }
+
     const newCustomer = {
       _type: "userForm",
       firstName: customerData.firstName,
       lastName: customerData.lastName,
       email: customerData.email,
-      passwort: customerData.passwort || generatePassword(), // WICHTIG: passwort verwenden
-      kundennummer: generateCustomerNumber(),
+      passwort: customerData.passwort || generatePassword(),
+      kundennummer: kundennummer,
       isAdmin: false,
       assignedForms: [],
       ausgefuellteformulare: [],
@@ -140,16 +219,6 @@ export async function createCustomer(customerData) {
 
     const result = await client.create(newCustomer)
 
-    // E-Mail an neuen Kunden senden
-    // try {
-    //   await sendCustomerWelcomeEmail(result)
-    //   console.log('Willkommens-E-Mail erfolgreich gesendet')
-    // } catch (emailError) {
-    //   console.error('Fehler beim Senden der Willkommens-E-Mail:', emailError)
-    //   // E-Mail-Fehler nicht weiterwerfen, da Kunde bereits erstellt wurde
-    // }
-
-    // Create notification for admin
     await createNotification({
       title: "Neuer Kunde erstellt",
       message: `Kunde ${customerData.firstName} ${customerData.lastName} wurde erstellt. Passwort: ${newCustomer.passwort}`,
@@ -167,7 +236,6 @@ export async function createCustomer(customerData) {
 
 export async function updateCustomer(customerId, customerData) {
   try {
-    // Check if email is being changed and if it already exists
     if (customerData.email) {
       const existingCustomer = await client.fetch(
         `*[_type == "userForm" && email == $email && _id != $customerId][0]`,
@@ -177,6 +245,14 @@ export async function updateCustomer(customerId, customerData) {
       if (existingCustomer) {
         throw new Error("Ein anderer Kunde mit dieser E-Mail-Adresse existiert bereits")
       }
+    }
+
+    if (customerData.kundennummer) {
+      const isTaken = await isCustomerNumberTaken(customerData.kundennummer, customerId)
+      if (isTaken) {
+        throw new Error("Diese Kundennummer ist bereits vergeben")
+      }
+      customerData.kundennummer = await validateAndUpdateHighestCustomerNumber(customerData.kundennummer)
     }
 
     return await client.patch(customerId).set(customerData).commit()
@@ -195,7 +271,7 @@ export async function deleteCustomer(customerId) {
   }
 }
 
-// Get user's assigned forms (now stored as text)
+// Get user's assigned forms
 export async function getUserAssignedForms(userId) {
   try {
     const user = await client.fetch(
@@ -209,7 +285,6 @@ export async function getUserAssignedForms(userId) {
       return []
     }
 
-    // Parse each form text into structured form
     return user.assignedForms
       .map((formText, index) => {
         const parsedForm = parseFormText(formText)
@@ -243,7 +318,6 @@ export async function getCompletedForms(userId) {
   }
 }
 
-// Add form text to user with duplicate check
 export async function assignFormTextToUser(userId, formText) {
   try {
     const user = await client.fetch(
@@ -253,7 +327,6 @@ export async function assignFormTextToUser(userId, formText) {
       { userId },
     )
 
-    // Check if form already assigned
     if (user?.assignedForms?.includes(formText)) {
       throw new Error("Dieses Formular ist bereits zugewiesen")
     }
@@ -265,7 +338,6 @@ export async function assignFormTextToUser(userId, formText) {
   }
 }
 
-// Remove form text from user
 export async function removeFormTextFromUser(userId, formIndex) {
   try {
     const user = await client.fetch(
@@ -288,14 +360,13 @@ export async function removeFormTextFromUser(userId, formIndex) {
   }
 }
 
-// File upload functions with better error handling
+// File upload functions
 export async function uploadFileToSanity(file) {
   try {
     if (!file) {
       throw new Error("Keine Datei zum Hochladen bereitgestellt")
     }
 
-    // Check file size (max 10MB)
     if (file.size > 10 * 1024 * 1024) {
       throw new Error("Datei ist zu groß (max. 10MB)")
     }
@@ -373,241 +444,6 @@ export async function getUserUploadedFiles(userId) {
     return []
   }
 }
-
-// PDF generation function (keeping existing implementation)
-// export async function generatePDF(form, answers, user, uploadedFileRefs = []) {
-//   const doc = new jsPDF({
-//     orientation: "portrait",
-//     unit: "mm",
-//     format: "a4",
-//   })
-
-//   const primaryColor = [227 / 255, 218 / 255, 201 / 255]
-//   const textColor = [50 / 255, 50 / 255, 50 / 255]
-//   const accentColor = [180 / 255, 170 / 255, 150 / 255]
-
-//   // Header
-//   doc.setFillColor(...primaryColor)
-//   doc.rect(0, 0, 210, 30, "F")
-
-//   doc.setTextColor(255, 255, 255)
-//   doc.setFontSize(22)
-//   doc.setFont("helvetica", "bold")
-//   doc.text("Formular-Dokumentation", 105, 15, { align: "center" })
-
-//   doc.setTextColor(...textColor)
-//   doc.setFontSize(10)
-//   doc.setFont("helvetica", "normal")
-//   doc.text(`Datum: ${new Date().toLocaleDateString("de-DE")}`, 20, 40)
-//   doc.text(`Formular-ID: ${form._id}`, 20, 45)
-
-//   // User information
-//   doc.setFillColor(...accentColor)
-//   doc.rect(0, 50, 210, 20, "F")
-
-//   doc.setTextColor(255, 255, 255)
-//   doc.setFontSize(14)
-//   doc.setFont("helvetica", "bold")
-//   doc.text("Kundeninformationen", 105, 62, { align: "center" })
-
-//   doc.setTextColor(...textColor)
-//   doc.setFontSize(12)
-//   doc.setFont("helvetica", "normal")
-//   doc.text(`Name: ${user.firstName} ${user.lastName}`, 20, 80)
-//   doc.text(`Kundennummer: ${user.kundennummer || "Nicht angegeben"}`, 20, 87)
-//   doc.text(`E-Mail: ${user.email || "Nicht angegeben"}`, 20, 94)
-
-//   // Form title
-//   doc.setFillColor(...primaryColor)
-//   doc.rect(0, 105, 210, 15, "F")
-
-//   doc.setTextColor(255, 255, 255)
-//   doc.setFontSize(14)
-//   doc.setFont("helvetica", "bold")
-//   doc.text(`Formular: ${form.title || "Ohne Titel"}`, 105, 114, { align: "center" })
-
-//   // Form answers
-//   doc.setTextColor(...textColor)
-//   doc.setFontSize(12)
-//   doc.setFont("helvetica", "bold")
-//   doc.text("Antworten:", 20, 130)
-
-//   let yPosition = 140
-
-//   if (form.questions && form.questions.length > 0) {
-//     for (let index = 0; index < form.questions.length; index++) {
-//       const question = form.questions[index]
-
-//       if (yPosition > 250) {
-//         doc.addPage()
-//         yPosition = 20
-
-//         doc.setFillColor(...primaryColor)
-//         doc.rect(0, 0, 210, 15, "F")
-//         doc.setTextColor(255, 255, 255)
-//         doc.setFontSize(14)
-//         doc.setFont("helvetica", "bold")
-//         doc.text("Formular-Dokumentation (Fortsetzung)", 105, 10, { align: "center" })
-
-//         doc.setTextColor(...textColor)
-//         doc.setFontSize(12)
-//         doc.setFont("helvetica", "bold")
-//         doc.text("Antworten (Fortsetzung):", 20, yPosition)
-//         yPosition += 10
-//       }
-
-//       doc.setFont("helvetica", "bold")
-//       doc.text(`Frage ${index + 1}: ${question.questionText}`, 20, yPosition)
-//       yPosition += 7
-
-//       doc.setFont("helvetica", "normal")
-//       const answerKey = `question_${index}`
-//       const fileKey = `file_${index}`
-//       let answerText = "Keine Antwort"
-
-//       if (question.questionType === "fileUpload" && answers[fileKey]) {
-//         const fileInfo = answers[fileKey]
-//         answerText = `Datei hochgeladen: ${fileInfo.fileName || "Datei"}`
-//         doc.text(`Antwort: ${answerText}`, 25, yPosition)
-//         yPosition += 7
-
-//         const fileRef = uploadedFileRefs.find((ref) => ref.questionIndex === index)
-//         if (fileRef && fileRef.url) {
-//           doc.setTextColor(0, 0, 255)
-//           doc.text(`Link zur Datei: ${fileRef.url}`, 25, yPosition)
-//           doc.setTextColor(...textColor)
-//         } else {
-//           doc.text("(Datei wurde separat hochgeladen)", 25, yPosition)
-//         }
-//         yPosition += 10
-//       } else if (answers[answerKey] !== undefined) {
-//         if (Array.isArray(answers[answerKey])) {
-//           if (answers[answerKey].length === 0) {
-//             answerText = "Keine Option ausgewählt"
-//           } else {
-//             answerText = answers[answerKey].join(", ")
-//           }
-//         } else {
-//           answerText = answers[answerKey].toString()
-//         }
-//         doc.text(`Antwort: ${answerText}`, 25, yPosition)
-//         yPosition += 10
-//       } else {
-//         doc.text(`Antwort: ${answerText}`, 25, yPosition)
-//         yPosition += 10
-//       }
-
-//       doc.setDrawColor(...accentColor)
-//       doc.line(20, yPosition, 190, yPosition)
-//       yPosition += 7
-//     }
-//   }
-
-//   // Uploaded files section
-//   if (uploadedFileRefs && uploadedFileRefs.length > 0) {
-//     if (yPosition > 220) {
-//       doc.addPage()
-//       yPosition = 20
-
-//       doc.setFillColor(...primaryColor)
-//       doc.rect(0, 0, 210, 15, "F")
-//       doc.setTextColor(255, 255, 255)
-//       doc.setFontSize(14)
-//       doc.setFont("helvetica", "bold")
-//       doc.text("Formular-Dokumentation (Fortsetzung)", 105, 10, { align: "center" })
-//       yPosition += 15
-//     }
-
-//     doc.setTextColor(...textColor)
-//     doc.setFontSize(12)
-//     doc.setFont("helvetica", "bold")
-//     doc.text("Hochgeladene Dateien:", 20, yPosition)
-//     yPosition += 10
-
-//     doc.setFont("helvetica", "normal")
-//     for (const file of uploadedFileRefs) {
-//       const fileInfo = `${file.fileName || "Datei"} (${file.fileType || "Unbekannter Typ"})`
-//       doc.text(`• ${fileInfo}`, 25, yPosition)
-//       yPosition += 7
-
-//       if (file.url) {
-//         doc.setTextColor(0, 0, 255)
-//         doc.text(`  Link: ${file.url}`, 25, yPosition)
-//         doc.setTextColor(...textColor)
-//         yPosition += 10
-//       } else {
-//         yPosition += 3
-//       }
-//     }
-//   }
-
-//   // Footer
-//   const pageCount = doc.internal.getNumberOfPages()
-//   for (let i = 1; i <= pageCount; i++) {
-//     doc.setPage(i)
-
-//     doc.setFillColor(...primaryColor)
-//     doc.rect(0, 280, 210, 17, "F")
-
-//     doc.setTextColor(255, 255, 255)
-//     doc.setFontSize(10)
-//     doc.setFont("helvetica", "normal")
-//     doc.text(`Seite ${i} von ${pageCount}`, 105, 290, { align: "center" })
-//     doc.text(`Erstellt am: ${new Date().toLocaleString("de-DE")}`, 20, 290)
-//   }
-
-
-
-// const dynamicKeys = Object.keys(answers).filter(
-//   (key) => !key.startsWith("question_") && !key.startsWith("file_")
-// )
-
-// for (const key of dynamicKeys) {
-//   if (yPosition > 250) {
-//     doc.addPage()
-//     yPosition = 20
-//     doc.setFillColor(...primaryColor)
-//     doc.rect(0, 0, 210, 15, "F")
-//     doc.setTextColor(255, 255, 255)
-//     doc.setFontSize(14)
-//     doc.setFont("helvetica", "bold")
-//     doc.text("Formular-Dokumentation (Fortsetzung)", 105, 10, { align: "center" })
-//     doc.setTextColor(...textColor)
-//     doc.setFontSize(12)
-//   }
-
-//   doc.setFont("helvetica", "bold")
-//   doc.text(`Feld: ${key}`, 20, yPosition)
-//   yPosition += 7
-
-//   doc.setFont("helvetica", "normal")
-//   const val = answers[key]
-//   const answerText = Array.isArray(val)
-//     ? (val.length > 0 ? val.join(", ") : "Keine Auswahl")
-//     : (val?.toString() || "Keine Antwort")
-
-//   doc.text(`Antwort: ${answerText}`, 25, yPosition)
-//   yPosition += 10
-
-//   doc.setDrawColor(...accentColor)
-//   doc.line(20, yPosition, 190, yPosition)
-//   yPosition += 7
-// }
-
-
-
-//   const pdfBlob = doc.output("blob")
-//   const file = new File([pdfBlob], `formular_${form._id}_${Date.now()}.pdf`, { type: "application/pdf" })
-
-//   const uploadedAsset = await client.assets.upload("file", file, {
-//     filename: file.name,
-//     contentType: file.type,
-//   })
-
-//   return {
-//     assetId: uploadedAsset._id,
-//   }
-// }
 
 export async function submitCompletedForm(userId, form, answers, fileUploads = {}) {
   try {
@@ -810,12 +646,28 @@ export async function getAppointments() {
   }
 }
 
-// Categories
+// ============================================================
+// ERWEITERTE KATEGORIE-FUNKTIONEN MIT UNTERKATEGORIEN
+// ============================================================
+
+// Hole alle Kategorien mit hierarchischer Struktur
 export async function getCategories() {
   try {
     return client.fetch(`*[_type == "category"] | order(name asc) {
       _id,
-      name
+      name,
+      description,
+      parentCategory-> {
+        _id,
+        name
+      },
+      "subcategories": *[_type == "category" && references(^._id)] {
+        _id,
+        name,
+        description,
+        "customerCount": count(*[_type == "userForm" && references(^._id)])
+      },
+      "customerCount": count(*[_type == "userForm" && references(^._id)])
     }`)
   } catch (error) {
     console.error("Fehler beim Abrufen der Kategorien:", error)
@@ -823,11 +675,64 @@ export async function getCategories() {
   }
 }
 
-export async function createCategory(name) {
+// Hole nur Hauptkategorien (ohne Parent)
+export async function getMainCategories() {
+  try {
+    return client.fetch(`*[_type == "category" && !defined(parentCategory)] | order(name asc) {
+      _id,
+      name,
+      description,
+      "subcategories": *[_type == "category" && references(^._id)] | order(name asc) {
+        _id,
+        name,
+        description,
+        "customerCount": count(*[_type == "userForm" && references(^._id)])
+      },
+      "customerCount": count(*[_type == "userForm" && references(^._id)])
+    }`)
+  } catch (error) {
+    console.error("Fehler beim Abrufen der Hauptkategorien:", error)
+    return []
+  }
+}
+
+// Hole Unterkategorien für eine bestimmte Kategorie
+export async function getSubcategories(parentCategoryId) {
+  try {
+    return client.fetch(
+      `*[_type == "category" && parentCategory._ref == $parentCategoryId] | order(name asc) {
+        _id,
+        name,
+        description,
+        parentCategory-> {
+          _id,
+          name
+        },
+        "customerCount": count(*[_type == "userForm" && references(^._id)])
+      }`,
+      { parentCategoryId }
+    )
+  } catch (error) {
+    console.error("Fehler beim Abrufen der Unterkategorien:", error)
+    return []
+  }
+}
+
+// Erstelle eine neue Kategorie (kann Hauptkategorie oder Unterkategorie sein)
+export async function createCategory(name, description = "", parentCategoryId = null) {
   try {
     const newCategory = {
       _type: "category",
       name: name,
+      description: description,
+    }
+
+    // Füge Referenz zur Elternkategorie hinzu, falls vorhanden
+    if (parentCategoryId) {
+      newCategory.parentCategory = {
+        _type: "reference",
+        _ref: parentCategoryId,
+      }
     }
 
     return client.create(newCategory)
@@ -837,6 +742,43 @@ export async function createCategory(name) {
   }
 }
 
+// Aktualisiere eine Kategorie
+export async function updateCategory(categoryId, data) {
+  try {
+    return await client.patch(categoryId).set(data).commit()
+  } catch (error) {
+    console.error("Fehler beim Aktualisieren der Kategorie:", error)
+    throw new Error(`Fehler beim Aktualisieren der Kategorie: ${error.message}`)
+  }
+}
+
+// Lösche eine Kategorie
+export async function deleteCategory(categoryId) {
+  try {
+    // Prüfe ob Kategorie Unterkategorien hat
+    const subcategories = await getSubcategories(categoryId)
+    if (subcategories.length > 0) {
+      throw new Error("Kategorie kann nicht gelöscht werden, da sie Unterkategorien enthält")
+    }
+
+    // Prüfe ob Kunden dieser Kategorie zugeordnet sind
+    const customersWithCategory = await client.fetch(
+      `*[_type == "userForm" && references($categoryId)]`,
+      { categoryId }
+    )
+    
+    if (customersWithCategory.length > 0) {
+      throw new Error("Kategorie kann nicht gelöscht werden, da sie Kunden zugeordnet ist")
+    }
+
+    return await client.delete(categoryId)
+  } catch (error) {
+    console.error("Fehler beim Löschen der Kategorie:", error)
+    throw error
+  }
+}
+
+// Weise Kunde einer Kategorie zu
 export async function assignCustomerToCategory(customerId, categoryId) {
   try {
     const customer = await client.fetch(
@@ -861,6 +803,7 @@ export async function assignCustomerToCategory(customerId, categoryId) {
   }
 }
 
+// Entferne Kunde aus Kategorie
 export async function removeCustomerFromCategory(customerId, categoryId) {
   try {
     const customer = await client.fetch(
@@ -880,5 +823,129 @@ export async function removeCustomerFromCategory(customerId, categoryId) {
   } catch (error) {
     console.error("Fehler beim Entfernen aus der Kategorie:", error)
     throw new Error(`Fehler beim Entfernen aus der Kategorie: ${error.message}`)
+  }
+}
+
+// Hole alle Kunden einer bestimmten Kategorie (inkl. Unterkategorien)
+export async function getCustomersByCategory(categoryId, includeSubcategories = false) {
+  try {
+    if (!includeSubcategories) {
+      return client.fetch(
+        `*[_type == "userForm" && references($categoryId)] | order(firstName asc) {
+          _id,
+          firstName,
+          lastName,
+          email,
+          kundennummer,
+          category[]-> {
+            _id,
+            name
+          }
+        }`,
+        { categoryId }
+      )
+    }
+
+    // Hole auch Kunden aus Unterkategorien
+    const subcategories = await getSubcategories(categoryId)
+    const allCategoryIds = [categoryId, ...subcategories.map(sub => sub._id)]
+
+    return client.fetch(
+      `*[_type == "userForm" && count((category[]._ref)[@ in $categoryIds]) > 0] | order(firstName asc) {
+        _id,
+        firstName,
+        lastName,
+        email,
+        kundennummer,
+        category[]-> {
+          _id,
+          name,
+          parentCategory-> {
+            _id,
+            name
+          }
+        }
+      }`,
+      { categoryIds: allCategoryIds }
+    )
+  } catch (error) {
+    console.error("Fehler beim Abrufen der Kunden nach Kategorie:", error)
+    return []
+  }
+}
+
+// Verschiebe Kategorie zu anderer Elternkategorie oder mache zu Hauptkategorie
+export async function moveCategoryToParent(categoryId, newParentCategoryId) {
+  try {
+    if (newParentCategoryId) {
+      // Prüfe ob die neue Elternkategorie nicht die Kategorie selbst oder eine ihrer Unterkategorien ist
+      const subcategories = await getSubcategories(categoryId)
+      const subcategoryIds = subcategories.map(sub => sub._id)
+      
+      if (categoryId === newParentCategoryId || subcategoryIds.includes(newParentCategoryId)) {
+        throw new Error("Kategorie kann nicht zu sich selbst oder einer ihrer Unterkategorien verschoben werden")
+      }
+
+      return await client
+        .patch(categoryId)
+        .set({
+          parentCategory: {
+            _type: "reference",
+            _ref: newParentCategoryId,
+          }
+        })
+        .commit()
+    } else {
+      // Entferne Elternkategorie (mache zu Hauptkategorie)
+      return await client
+        .patch(categoryId)
+        .unset(['parentCategory'])
+        .commit()
+    }
+  } catch (error) {
+    console.error("Fehler beim Verschieben der Kategorie:", error)
+    throw error
+  }
+}
+
+// Filtere Kunden nach mehreren Kategorien
+export async function getCustomersByCategories(categoryIds, matchAll = false) {
+  try {
+    if (matchAll) {
+      // Kunden müssen ALLE Kategorien haben
+      return client.fetch(
+        `*[_type == "userForm" && count((category[]._ref)[@ in $categoryIds]) == ${categoryIds.length}] | order(firstName asc) {
+          _id,
+          firstName,
+          lastName,
+          email,
+          kundennummer,
+          category[]-> {
+            _id,
+            name
+          }
+        }`,
+        { categoryIds }
+      )
+    } else {
+      // Kunden müssen MINDESTENS EINE Kategorie haben
+      return client.fetch(
+        `*[_type == "userForm" && count((category[]._ref)[@ in $categoryIds]) > 0] | order(firstName asc) {
+          _id,
+          firstName,
+          lastName,
+          email,
+          kundennummer,
+          category[]-> {
+            _id,
+            name
+          }
+        }`,
+        { categoryIds }
+      )
+    }
+  } catch (error) {
+    console.error("Fehler beim Filtern der Kunden:", error)
+    return []
   }
 }
