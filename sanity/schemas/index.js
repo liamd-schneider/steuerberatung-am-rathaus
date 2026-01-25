@@ -3,7 +3,7 @@
 import appointmentSchema from "./appointment-schema";
 import categorySchema from "./category-schema";
 import contactSchema from "./contact-schema";
-import customerCounter from './schemas/customerCounter'
+import customerCounter from './customerCounter'
 import formsSchema from "./forms-schema";
 import notificationSchema from "./notification-schema";
 import { userSchema } from "./user-schema";
