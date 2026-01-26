@@ -25,8 +25,51 @@ import {
 } from "@/sanity/lib"
 import { PREDEFINED_FORMS } from "@/sanity/predefined-forms"
 import emailjs from "@emailjs/browser"
+import {
+  getAllCategories,
+  getMainCategoriesAction,
+  getSubcategoriesAction,
+  createCategoryAction,
+  updateCategoryAction,
+  deleteCategoryAction,
+  assignCustomerToCategoryAction,
+  removeCustomerFromCategoryAction,
+  getCustomersByCategoryAction,
+  moveCategoryAction,
+} from "@/sanity/actions"
 
 export default function AdminDashboard({ onLogout }) {
+  const [selectedCategoryFilter, setSelectedCategoryFilter] = useState(null)
+const [selectedSubcategoryFilters, setSelectedSubcategoryFilters] = useState([])
+const [includeSubcategoriesInFilter, setIncludeSubcategoriesInFilter] = useState(false)
+const [availableSubcategoriesForFilter, setAvailableSubcategoriesForFilter] = useState([])
+
+  const [categories, setCategories] = useState([])
+const [mainCategories, setMainCategories] = useState([])
+const [selectedCategory, setSelectedCategory] = useState(null)
+const [selectedSubcategories, setSelectedSubcategories] = useState([])
+
+// Kategorie-Modals
+const [showCategoryModal, setShowCategoryModal] = useState(false)
+const [showSubcategoryModal, setShowSubcategoryModal] = useState(false)
+const [showEditCategoryModal, setShowEditCategoryModal] = useState(false)
+const [showMoveCategoryModal, setShowMoveCategoryModal] = useState(false)
+
+// Kategorie-Formulardaten
+const [newCategoryName, setNewCategoryName] = useState("")
+const [newCategoryDescription, setNewCategoryDescription] = useState("")
+const [parentCategoryForNew, setParentCategoryForNew] = useState(null)
+const [editingCategory, setEditingCategory] = useState(null)
+const [movingCategory, setMovingCategory] = useState(null)
+
+// Kategorie-Zuweisung
+const [showAssignCategoryModal, setShowAssignCategoryModal] = useState(false)
+const [customerToAssignCategory, setCustomerToAssignCategory] = useState(null)
+const [showCategoryDetails, setShowCategoryDetails] = useState(null)
+
+// Filter
+const [categoryFilter, setCategoryFilter] = useState("all")
+
   const [activeTab, setActiveTab] = useState("customers")
   const [customers, setCustomers] = useState([])
   const [appointments, setAppointments] = useState([])
@@ -37,10 +80,11 @@ export default function AdminDashboard({ onLogout }) {
   const [isEditing, setIsEditing] = useState(false)
   const [currentCustomer, setCurrentCustomer] = useState(null)
   const [formData, setFormData] = useState({
-    firstName: "",
-    lastName: "",
-    email: "",
-  })
+  firstName: "",
+  lastName: "",
+  email: "",
+  kundennummer: "", // HINZUGEFÜGT: Kundennummer-Feld
+})
   const [error, setError] = useState("")
   const [success, setSuccess] = useState("")
 
@@ -54,12 +98,7 @@ export default function AdminDashboard({ onLogout }) {
   const [selectedInquiry, setSelectedInquiry] = useState(null)
 
   const [customerFilter, setCustomerFilter] = useState("all")
-  const [categories, setCategories] = useState([])
-  const [selectedCategory, setSelectedCategory] = useState(null)
-  const [showCategoryModal, setShowCategoryModal] = useState(false)
-  const [newCategoryName, setNewCategoryName] = useState("")
-  const [showAssignCategoryModal, setShowAssignCategoryModal] = useState(false)
-  const [customerToAssignCategory, setCustomerToAssignCategory] = useState(null)
+ 
 
   const [showEmailModal, setShowEmailModal] = useState(false)
   const [emailCustomer, setEmailCustomer] = useState(null)
@@ -77,6 +116,35 @@ const [numberOfChildren, setNumberOfChildren] = useState(0)
 const formTopRef = useRef(null)
 
 const [fileUploads, setFileUploads] = useState({})
+useEffect(() => {
+  if (selectedCategoryFilter) {
+    const category = categories.find(c => c._id === selectedCategoryFilter)
+    if (category && category.subcategories) {
+      setAvailableSubcategoriesForFilter(category.subcategories)
+    } else {
+      setAvailableSubcategoriesForFilter([])
+    }
+  } else {
+    setAvailableSubcategoriesForFilter([])
+    setSelectedSubcategoryFilters([])
+  }
+}, [selectedCategoryFilter, categories])
+
+// Handler für Unterkategorie-Auswahl
+const handleSubcategoryFilterToggle = (subcategoryId) => {
+  setSelectedSubcategoryFilters(prev => {
+    if (prev.includes(subcategoryId)) {
+      return prev.filter(id => id !== subcategoryId)
+    } else {
+      return [...prev, subcategoryId]
+    }
+  })
+}
+const handleResetCategoryFilter = () => {
+  setSelectedCategoryFilter(null)
+  setSelectedSubcategoryFilters([])
+  setIncludeSubcategoriesInFilter(false)
+}
 
 // 2. Füge die createDynamicQuestionLabel Funktion hinzu:
 const createDynamicQuestionLabel = (key) => {
@@ -505,28 +573,206 @@ useEffect(() => {
   }, [])
 
   const fetchData = async () => {
-    setIsLoading(true)
-    try {
-      const [customersData, appointmentsData, inquiriesData, notificationsData, categoriesData] = await Promise.all([
+  setIsLoading(true)
+  try {
+    const [customersData, appointmentsData, inquiriesData, notificationsData, categoriesData, mainCategoriesData] = 
+      await Promise.all([
         getCustomers(),
         getAppointments(),
         getContactInquiries(),
         getNotifications(),
-        getCategories(),
+        getAllCategories(),
+        getMainCategoriesAction(),
       ])
 
-      setCustomers(customersData || [])
-      setAppointments(appointmentsData || [])
-      setContactInquiries(inquiriesData || [])
-      setNotifications(notificationsData || [])
-      setCategories(categoriesData || [])
-    } catch (error) {
-      console.error("Error fetching data:", error)
-      setError("Fehler beim Laden der Daten")
-    } finally {
-      setIsLoading(false)
-    }
+    setCustomers(customersData || [])
+    setAppointments(appointmentsData || [])
+    setContactInquiries(inquiriesData || [])
+    setNotifications(notificationsData || [])
+    setCategories(categoriesData || [])
+    setMainCategories(mainCategoriesData || [])
+  } catch (error) {
+    console.error("Error fetching data:", error)
+    setError("Fehler beim Laden der Daten")
+  } finally {
+    setIsLoading(false)
   }
+}
+
+const handleCreateMainCategory = async () => {
+  if (!newCategoryName.trim()) {
+    setError("Bitte geben Sie einen Kategorienamen ein")
+    return
+  }
+
+  try {
+    const result = await createCategoryAction(newCategoryName, newCategoryDescription, null)
+    if (result.success) {
+      setSuccess("Hauptkategorie erfolgreich erstellt")
+      setNewCategoryName("")
+      setNewCategoryDescription("")
+      setShowCategoryModal(false)
+      fetchData()
+    } else {
+      setError(result.error)
+    }
+  } catch (error) {
+    setError(`Fehler beim Erstellen der Kategorie: ${error.message}`)
+  }
+}
+
+// Erstelle Unterkategorie
+const handleCreateSubcategory = async () => {
+  if (!newCategoryName.trim()) {
+    setError("Bitte geben Sie einen Namen ein")
+    return
+  }
+
+  if (!parentCategoryForNew) {
+    setError("Bitte wählen Sie eine übergeordnete Kategorie")
+    return
+  }
+
+  try {
+    const result = await createCategoryAction(
+      newCategoryName, 
+      newCategoryDescription, 
+      parentCategoryForNew
+    )
+    if (result.success) {
+      setSuccess("Unterkategorie erfolgreich erstellt")
+      setNewCategoryName("")
+      setNewCategoryDescription("")
+      setParentCategoryForNew(null)
+      setShowSubcategoryModal(false)
+      fetchData()
+    } else {
+      setError(result.error)
+    }
+  } catch (error) {
+    setError(`Fehler beim Erstellen der Unterkategorie: ${error.message}`)
+  }
+}
+const handleEditCategory = (category) => {
+  setEditingCategory(category)
+  setNewCategoryName(category.name)
+  setNewCategoryDescription(category.description || "")
+  setShowEditCategoryModal(true)
+}
+
+const handleSaveEditCategory = async () => {
+  if (!newCategoryName.trim()) {
+    setError("Bitte geben Sie einen Namen ein")
+    return
+  }
+
+  try {
+    const result = await updateCategoryAction(editingCategory._id, {
+      name: newCategoryName,
+      description: newCategoryDescription,
+    })
+    
+    if (result.success) {
+      setSuccess("Kategorie erfolgreich aktualisiert")
+      setNewCategoryName("")
+      setNewCategoryDescription("")
+      setEditingCategory(null)
+      setShowEditCategoryModal(false)
+      fetchData()
+    } else {
+      setError(result.error)
+    }
+  } catch (error) {
+    setError(`Fehler beim Aktualisieren: ${error.message}`)
+  }
+}
+
+// Lösche Kategorie
+const handleDeleteCategory = async (categoryId) => {
+  if (!window.confirm("Sind Sie sicher, dass Sie diese Kategorie löschen möchten?")) {
+    return
+  }
+
+  try {
+    const result = await deleteCategoryAction(categoryId)
+    if (result.success) {
+      setSuccess("Kategorie erfolgreich gelöscht")
+      fetchData()
+    } else {
+      setError(result.error)
+    }
+  } catch (error) {
+    setError(`Fehler beim Löschen: ${error.message}`)
+  }
+}
+
+// Verschiebe Kategorie
+const handleMoveCategory = (category) => {
+  setMovingCategory(category)
+  setShowMoveCategoryModal(true)
+}
+
+const handleSaveMoveCategory = async (newParentId) => {
+  try {
+    const result = await moveCategoryAction(movingCategory._id, newParentId)
+    if (result.success) {
+      setSuccess("Kategorie erfolgreich verschoben")
+      setMovingCategory(null)
+      setShowMoveCategoryModal(false)
+      fetchData()
+    } else {
+      setError(result.error)
+    }
+  } catch (error) {
+    setError(`Fehler beim Verschieben: ${error.message}`)
+  }
+}
+
+// Zeige Kategorie-Details mit Kunden
+const handleShowCategoryDetails = async (category, includeSubcats = false) => {
+  try {
+    const customersInCategory = await getCustomersByCategoryAction(category._id, includeSubcats)
+    setShowCategoryDetails({
+      ...category,
+      customers: customersInCategory,
+      includesSubcategories: includeSubcats
+    })
+  } catch (error) {
+    setError(`Fehler beim Laden der Details: ${error.message}`)
+  }
+}
+
+// Kategorie zuweisen
+const handleAssignCategory = async (categoryId) => {
+  try {
+    const result = await assignCustomerToCategoryAction(customerToAssignCategory, categoryId)
+    if (result.success) {
+      setSuccess("Kunde erfolgreich der Kategorie zugeordnet")
+      fetchData()
+    } else {
+      setError(result.error)
+    }
+    setShowAssignCategoryModal(false)
+    setCustomerToAssignCategory(null)
+  } catch (error) {
+    setError(`Fehler beim Zuordnen: ${error.message}`)
+  }
+}
+
+// Kategorie entfernen
+const handleRemoveFromCategory = async (customerId, categoryId) => {
+  try {
+    const result = await removeCustomerFromCategoryAction(customerId, categoryId)
+    if (result.success) {
+      setSuccess("Kunde erfolgreich aus der Kategorie entfernt")
+      fetchData()
+    } else {
+      setError(result.error)
+    }
+  } catch (error) {
+    setError(`Fehler beim Entfernen: ${error.message}`)
+  }
+}
 
   const fetchNotifications = async () => {
     try {
@@ -593,19 +839,25 @@ useEffect(() => {
     }
   }
 
-  const handleEditCustomer = (customer) => {
-    setCurrentCustomer(customer)
-    setFormData({
-      firstName: customer.firstName,
-      lastName: customer.lastName,
-      email: customer.email,
-    })
-  }
+const handleEditCustomer = (customer) => {
+  setCurrentCustomer(customer)
+  setFormData({
+    firstName: customer.firstName,
+    lastName: customer.lastName,
+    email: customer.email,
+    kundennummer: customer.kundennummer || "", // HINZUGEFÜGT
+  })
+}
 
   const handleCancelEdit = () => {
-    setCurrentCustomer(null)
-    setFormData({ firstName: "", lastName: "", email: "" })
-  }
+  setCurrentCustomer(null)
+  setFormData({ 
+    firstName: "", 
+    lastName: "", 
+    email: "",
+    kundennummer: "" // HINZUGEFÜGT
+  })
+}
 
   const handleAssignForm = async (customerId) => {
     setSelectedCustomer(customerId)
@@ -736,31 +988,9 @@ useEffect(() => {
     }
   }
 
-  const handleAssignCategory = async (categoryId) => {
-    try {
-      const result = await assignCustomerToCategory(customerToAssignCategory, categoryId)
-      if (result.alreadyAssigned) {
-        setError("Kunde ist bereits dieser Kategorie zugeordnet")
-      } else {
-        setSuccess("Kunde erfolgreich der Kategorie zugeordnet")
-        fetchData()
-      }
-      setShowAssignCategoryModal(false)
-      setCustomerToAssignCategory(null)
-    } catch (error) {
-      setError(`Fehler beim Zuordnen zur Kategorie: ${error.message}`)
-    }
-  }
+ 
 
-  const handleRemoveFromCategory = async (customerId, categoryId) => {
-    try {
-      await removeCustomerFromCategory(customerId, categoryId)
-      setSuccess("Kunde erfolgreich aus der Kategorie entfernt")
-      fetchData()
-    } catch (error) {
-      setError(`Fehler beim Entfernen aus der Kategorie: ${error.message}`)
-    }
-  }
+ 
 
   const handleSaveEmailConfig = () => {
     if (!emailConfig.serviceId || !emailConfig.templateId || !emailConfig.publicKey) {
@@ -3090,17 +3320,45 @@ useEffect(() => {
     }
   }
 
-  const filteredCustomers = customers.filter((customer) => {
-    if (customerFilter === "all") return true
-    if (customerFilter === "with_forms") return customer.assignedForms && customer.assignedForms.length > 0
-    if (customerFilter === "without_forms") return !customer.assignedForms || customer.assignedForms.length === 0
-    if (customerFilter === "completed_forms")
-      return customer.ausgefuellteformulare && customer.ausgefuellteformulare.length > 0
-    if (selectedCategory) {
-      return customer.category && customer.category.some((cat) => cat._id === selectedCategory)
+ const filteredCustomers = customers.filter((customer) => {
+  // Basis-Filter (unverändert)
+  if (categoryFilter === "with_forms") {
+    if (!customer.assignedForms || customer.assignedForms.length === 0) return false
+  }
+  if (categoryFilter === "without_forms") {
+    if (customer.assignedForms && customer.assignedForms.length > 0) return false
+  }
+  if (categoryFilter === "completed_forms") {
+    if (!customer.ausgefuellteformulare || customer.ausgefuellteformulare.length === 0) return false
+  }
+
+  // ERWEITERTE KATEGORIEFILTER-LOGIK
+  if (selectedCategoryFilter) {
+    if (!customer.category || customer.category.length === 0) return false
+    
+    const customerCategoryIds = customer.category.map(cat => cat._id)
+    
+    // Fall 1: Spezifische Unterkategorien ausgewählt
+    if (selectedSubcategoryFilters.length > 0) {
+      // Kunde muss mindestens eine der gewählten Unterkategorien haben
+      return selectedSubcategoryFilters.some(subId => customerCategoryIds.includes(subId))
     }
-    return true
-  })
+    
+    // Fall 2: "Inkl. Unterkategorien" aktiviert (alle Unterkategorien)
+    if (includeSubcategoriesInFilter) {
+      const categoryToCheck = categories.find(c => c._id === selectedCategoryFilter)
+      const subcategoryIds = categoryToCheck?.subcategories?.map(s => s._id) || []
+      const allIds = [selectedCategoryFilter, ...subcategoryIds]
+      
+      return customerCategoryIds.some(id => allIds.includes(id))
+    }
+    
+    // Fall 3: Nur Hauptkategorie (direkte Zuordnung)
+    return customerCategoryIds.includes(selectedCategoryFilter)
+  }
+
+  return true
+})
 
   const unreadNotifications = notifications.filter((n) => !n.read)
 
@@ -3305,120 +3563,269 @@ useEffect(() => {
 
         {/* Customers Tab */}
         {activeTab === "customers" && (
-          <div className="space-y-6">
-            {/* Customer Creation Form */}
-            <div className="bg-[rgba(227,218,201,0.1)] shadow overflow-hidden sm:rounded-lg">
-              <div className="px-4 py-5 sm:px-6 bg-[#E3DAC9]/20">
-                <h2 className="text-lg leading-6 font-medium text-white">
-                  {currentCustomer ? "Kunde bearbeiten" : "Neuen Kunden erstellen"}
-                </h2>
-                <p className="mt-1 text-sm text-white">
-                  {!currentCustomer && "Das Passwort wird automatisch generiert und angezeigt."}
-                </p>
-              </div>
-              <div className="border-t border-gray-700 px-4 py-5 sm:px-6">
-                <form onSubmit={currentCustomer ? handleUpdateCustomer : handleCreateCustomer}>
-                  <div className="grid grid-cols-1 gap-6 sm:grid-cols-3">
-                    <div>
-                      <label htmlFor="firstName" className="block text-sm font-medium text-white">
-                        Vorname
-                      </label>
-                      <input
-                        type="text"
-                        name="firstName"
-                        id="firstName"
-                        value={formData.firstName}
-                        onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
-                        required
-                        className="mt-1 block w-full bg-[rgba(227,218,201,0.1)] border border-gray-700 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-[#E3DAC9] focus:border-[#E3DAC9]"
-                      />
-                    </div>
-                    <div>
-                      <label htmlFor="lastName" className="block text-sm font-medium text-white">
-                        Nachname
-                      </label>
-                      <input
-                        type="text"
-                        name="lastName"
-                        id="lastName"
-                        value={formData.lastName}
-                        onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
-                        required
-                        className="mt-1 block w-full bg-[rgba(227,218,201,0.1)] border border-gray-700 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-[#E3DAC9] focus:border-[#E3DAC9]"
-                      />
-                    </div>
-                    <div>
-                      <label htmlFor="email" className="block text-sm font-medium text-white">
-                        E-Mail
-                      </label>
-                      <input
-                        type="email"
-                        name="email"
-                        id="email"
-                        value={formData.email}
-                        onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                        required
-                        className="mt-1 block w-full bg-[rgba(227,218,201,0.1)] border border-gray-700 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-[#E3DAC9] focus:border-[#E3DAC9]"
-                      />
-                    </div>
-                  </div>
-                  <div className="mt-6 flex space-x-3">
-                    <button
-                      type="submit"
-                      disabled={isCreating || isEditing}
-                      className="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-black bg-[#E3DAC9] hover:bg-[#E3DAC9]/80 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#E3DAC9] disabled:opacity-50"
-                    >
-                      {currentCustomer
-                        ? isEditing
-                          ? "Wird aktualisiert..."
-                          : "Aktualisieren"
-                        : isCreating
-                          ? "Wird erstellt..."
-                          : "Erstellen"}
-                    </button>
-                    {currentCustomer && (
-                      <button
-                        type="button"
-                        onClick={handleCancelEdit}
-                        className="inline-flex justify-center py-2 px-4 border border-gray-700 shadow-sm text-sm font-medium rounded-md text-white bg-[rgba(227,218,201,0.1)] hover:bg-[rgba(227,218,201,0.2)] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#E3DAC9]"
-                      >
-                        Abbrechen
-                      </button>
-                    )}
-                  </div>
-                </form>
-              </div>
+  <div className="space-y-6">
+    {/* Customer Creation Form */}
+    <div className="bg-[rgba(227,218,201,0.1)] shadow overflow-hidden sm:rounded-lg">
+      <div className="px-4 py-5 sm:px-6 bg-[#E3DAC9]/20">
+        <h2 className="text-lg leading-6 font-medium text-white">
+          {currentCustomer ? "Kunde bearbeiten" : "Neuen Kunden erstellen"}
+        </h2>
+        <p className="mt-1 text-sm text-white">
+          {!currentCustomer && "Das Passwort wird automatisch generiert. Die Kundennummer kann manuell vergeben oder automatisch generiert werden."}
+        </p>
+      </div>
+      <div className="border-t border-gray-700 px-4 py-5 sm:px-6">
+        <form onSubmit={currentCustomer ? handleUpdateCustomer : handleCreateCustomer}>
+          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
+            <div>
+              <label htmlFor="firstName" className="block text-sm font-medium text-white">
+                Vorname
+              </label>
+              <input
+                type="text"
+                name="firstName"
+                id="firstName"
+                value={formData.firstName}
+                onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
+                required
+                className="mt-1 block w-full bg-[rgba(227,218,201,0.1)] border border-gray-700 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-[#E3DAC9] focus:border-[#E3DAC9]"
+              />
             </div>
+            <div>
+              <label htmlFor="lastName" className="block text-sm font-medium text-white">
+                Nachname
+              </label>
+              <input
+                type="text"
+                name="lastName"
+                id="lastName"
+                value={formData.lastName}
+                onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
+                required
+                className="mt-1 block w-full bg-[rgba(227,218,201,0.1)] border border-gray-700 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-[#E3DAC9] focus:border-[#E3DAC9]"
+              />
+            </div>
+            <div>
+              <label htmlFor="email" className="block text-sm font-medium text-white">
+                E-Mail
+              </label>
+              <input
+                type="email"
+                name="email"
+                id="email"
+                value={formData.email}
+                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                required
+                className="mt-1 block w-full bg-[rgba(227,218,201,0.1)] border border-gray-700 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-[#E3DAC9] focus:border-[#E3DAC9]"
+              />
+            </div>
+            {/* NEUES FELD: Kundennummer */}
+            <div>
+              <label htmlFor="kundennummer" className="block text-sm font-medium text-white">
+                Kundennummer {!currentCustomer && <span className="text-gray-400">(optional)</span>}
+              </label>
+              <input
+                type="text"
+                name="kundennummer"
+                id="kundennummer"
+                value={formData.kundennummer}
+                onChange={(e) => setFormData({ ...formData, kundennummer: e.target.value })}
+                placeholder={!currentCustomer ? "Wird automatisch generiert" : ""}
+                className="mt-1 block w-full bg-[rgba(227,218,201,0.1)] border border-gray-700 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-[#E3DAC9] focus:border-[#E3DAC9]"
+              />
+              {!currentCustomer && (
+                <p className="mt-1 text-xs text-gray-400">
+                  Leer lassen für automatische Vergabe
+                </p>
+              )}
+            </div>
+          </div>
+          <div className="mt-6 flex space-x-3">
+            <button
+              type="submit"
+              disabled={isCreating || isEditing}
+              className="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-black bg-[#E3DAC9] hover:bg-[#E3DAC9]/80 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#E3DAC9] disabled:opacity-50"
+            >
+              {currentCustomer
+                ? isEditing
+                  ? "Wird aktualisiert..."
+                  : "Aktualisieren"
+                : isCreating
+                  ? "Wird erstellt..."
+                  : "Erstellen"}
+            </button>
+            {currentCustomer && (
+              <button
+                type="button"
+                onClick={handleCancelEdit}
+                className="inline-flex justify-center py-2 px-4 border border-gray-700 shadow-sm text-sm font-medium rounded-md text-white bg-[rgba(227,218,201,0.1)] hover:bg-[rgba(227,218,201,0.2)] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#E3DAC9]"
+              >
+                Abbrechen
+              </button>
+            )}
+          </div>
+        </form>
+      </div>
+    </div>
 
-            {/* Customer Filters */}
-            <div className="bg-[rgba(227,218,201,0.1)] shadow overflow-hidden sm:rounded-lg">
-              <div className="px-4 py-5 sm:px-6">
-                <div className="flex flex-wrap gap-4">
-                  <select
-                    value={customerFilter}
-                    onChange={(e) => setCustomerFilter(e.target.value)}
-                    className="bg-[rgba(227,218,201,0.1)] border border-gray-700 rounded-md shadow-sm py-2 px-3 text-black focus:outline-none focus:ring-[#E3DAC9] focus:border-[#E3DAC9]"
-                  >
-                    <option value="all">Alle Kunden</option>
-                    <option value="with_forms">Mit zugewiesenen Formularen</option>
-                    <option value="without_forms">Ohne zugewiesene Formulare</option>
-                    <option value="completed_forms">Mit ausgefüllten Formularen</option>
-                  </select>
-                  <select
-                    value={selectedCategory || ""}
-                    onChange={(e) => setSelectedCategory(e.target.value || null)}
-                    className="bg-[rgba(227,218,201,0.1)] border border-gray-700 rounded-md shadow-sm py-2 px-3 text-black focus:outline-none focus:ring-[#E3DAC9] focus:border-[#E3DAC9]"
-                  >
-                    <option value="">Alle Kategorien</option>
-                    {categories.map((category) => (
-                      <option key={category._id} value={category._id}>
-                        {category.name}
-                      </option>
-                    ))}
-                  </select>
+          {/* Customer Filters - ERWEITERTE VERSION */}
+<div className="bg-[rgba(227,218,201,0.1)] shadow overflow-hidden sm:rounded-lg">
+  <div className="px-4 py-5 sm:px-6">
+    <div className="space-y-4">
+      {/* Zeile 1: Basis-Filter */}
+      <div className="flex flex-wrap gap-4">
+        <select
+          value={categoryFilter}
+          onChange={(e) => setCategoryFilter(e.target.value)}
+          className="bg-[rgba(227,218,201,0.1)] border border-gray-700 rounded-md shadow-sm py-2 px-3 text-black focus:outline-none focus:ring-[#E3DAC9] focus:border-[#E3DAC9]"
+        >
+          <option value="all">Alle Kunden</option>
+          <option value="with_forms">Mit zugewiesenen Formularen</option>
+          <option value="without_forms">Ohne zugewiesene Formulare</option>
+          <option value="completed_forms">Mit ausgefüllten Formularen</option>
+        </select>
+        
+        <select
+          value={selectedCategoryFilter || ""}
+          onChange={(e) => {
+            setSelectedCategoryFilter(e.target.value || null)
+            setSelectedSubcategoryFilters([])
+            setIncludeSubcategoriesInFilter(false)
+          }}
+          className="bg-[rgba(227,218,201,0.1)] border border-gray-700 rounded-md shadow-sm py-2 px-3 text-black focus:outline-none focus:ring-[#E3DAC9] focus:border-[#E3DAC9]"
+        >
+          <option value="">Alle Kategorien</option>
+          {mainCategories.map((category) => (
+            <option key={category._id} value={category._id}>
+              📁 {category.name} ({category.customerCount || 0})
+            </option>
+          ))}
+        </select>
+        
+        {selectedCategoryFilter && (
+          <button
+            onClick={handleResetCategoryFilter}
+            className="inline-flex items-center px-3 py-2 border border-red-700 text-sm font-medium rounded-md text-red-400 bg-red-900/20 hover:bg-red-900/40"
+          >
+            Filter zurücksetzen
+          </button>
+        )}
+      </div>
+
+      {/* Zeile 2: Unterkategorie-Optionen (nur wenn Hauptkategorie gewählt) */}
+      {selectedCategoryFilter && availableSubcategoriesForFilter.length > 0 && (
+        <div className="border-t border-gray-700 pt-4">
+          <div className="space-y-3">
+            {/* Option 1: Alle Unterkategorien einbeziehen */}
+            <label className="flex items-center text-white">
+              <input
+                type="checkbox"
+                checked={includeSubcategoriesInFilter && selectedSubcategoryFilters.length === 0}
+                onChange={(e) => {
+                  if (e.target.checked) {
+                    setIncludeSubcategoriesInFilter(true)
+                    setSelectedSubcategoryFilters([])
+                  } else {
+                    setIncludeSubcategoriesInFilter(false)
+                  }
+                }}
+                className="h-4 w-4 text-[#E3DAC9] border-gray-700 bg-[rgba(227,218,201,0.1)] rounded"
+              />
+              <span className="ml-2 text-sm font-medium">
+                Alle Unterkategorien einbeziehen ({availableSubcategoriesForFilter.length})
+              </span>
+            </label>
+
+            {/* Option 2: Spezifische Unterkategorien wählen */}
+            {!includeSubcategoriesInFilter && (
+              <div className="ml-6 space-y-2">
+                <p className="text-sm text-gray-400 font-medium mb-2">
+                  Oder spezifische Unterkategorien wählen:
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                  {availableSubcategoriesForFilter.map((subcat) => (
+                    <label
+                      key={subcat._id}
+                      className="flex items-center text-white bg-[rgba(227,218,201,0.05)] px-3 py-2 rounded border border-gray-700 hover:bg-[rgba(227,218,201,0.1)] cursor-pointer"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedSubcategoryFilters.includes(subcat._id)}
+                        onChange={() => handleSubcategoryFilterToggle(subcat._id)}
+                        className="h-4 w-4 text-[#E3DAC9] border-gray-700 bg-[rgba(227,218,201,0.1)] rounded"
+                      />
+                      <span className="ml-2 text-sm flex-1">
+                        ↳ {subcat.name}
+                      </span>
+                      <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-xs bg-[#E3DAC9]/30 text-white">
+                        {subcat.customerCount || 0}
+                      </span>
+                    </label>
+                  ))}
                 </div>
               </div>
+            )}
+
+            {/* Aktive Filter-Anzeige */}
+            {selectedSubcategoryFilters.length > 0 && (
+              <div className="bg-blue-900/20 border border-blue-700 rounded-md p-3">
+                <p className="text-sm text-blue-200 mb-2">
+                  Aktive Unterkategorien-Filter ({selectedSubcategoryFilters.length}):
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {selectedSubcategoryFilters.map((subId) => {
+                    const subcat = availableSubcategoriesForFilter.find(s => s._id === subId)
+                    return subcat ? (
+                      <span
+                        key={subId}
+                        className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-blue-900 text-blue-200"
+                      >
+                        {subcat.name}
+                        <button
+                          onClick={() => handleSubcategoryFilterToggle(subId)}
+                          className="ml-1 text-blue-400 hover:text-blue-200"
+                        >
+                          ×
+                        </button>
+                      </span>
+                    ) : null
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Zeile 3: Filter-Status-Anzeige */}
+      {selectedCategoryFilter && (
+        <div className="bg-[rgba(227,218,201,0.1)] border border-gray-700 rounded-md p-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-2">
+              <span className="text-sm text-white">Aktiver Filter:</span>
+              <span className="inline-flex items-center px-2 py-1 rounded-full text-sm bg-[#E3DAC9] text-black font-medium">
+                {mainCategories.find(c => c._id === selectedCategoryFilter)?.name}
+              </span>
+              {includeSubcategoriesInFilter && (
+                <span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-green-900 text-green-200">
+                  + Alle Unterkategorien
+                </span>
+              )}
+              {selectedSubcategoryFilters.length > 0 && (
+                <span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-blue-900 text-blue-200">
+                  + {selectedSubcategoryFilters.length} Unterkategorie(n)
+                </span>
+              )}
             </div>
+            <span className="text-sm text-gray-400">
+              {filteredCustomers.length} Kunde(n) gefunden
+            </span>
+          </div>
+        </div>
+      )}
+    </div>
+  </div>
+</div>
 
             {/* Customer List */}
             <div className="bg-[rgba(227,218,201,0.1)] shadow overflow-hidden sm:rounded-lg">
@@ -3483,24 +3890,27 @@ useEffect(() => {
                               </div>
                             </div>
                             <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 text-sm text-white">
-                              <div>
-                                <span className="font-medium">E-Mail:</span> {customer.email}
-                              </div>
-                              <div>
-                                <span className="font-medium">Kundennummer:</span> {customer.kundennummer}
-                              </div>
-                              <div>
-                                <span className="font-medium">Passwort:</span> {customer.passwort || "Nicht gesetzt"}
-                              </div>
-                              <div>
-                                <span className="font-medium">Zugewiesene Formulare:</span>{" "}
-                                {customer.assignedForms ? customer.assignedForms.length : 0}
-                              </div>
-                              <div>
-                                <span className="font-medium">Ausgefüllte Formulare:</span>{" "}
-                                {customer.ausgefuellteformulare ? customer.ausgefuellteformulare.length : 0}
-                              </div>
-                            </div>
+  <div>
+    <span className="font-medium">E-Mail:</span> {customer.email}
+  </div>
+  <div>
+    <span className="font-medium">Kundennummer:</span> 
+    <span className="ml-1 px-2 py-1 bg-[#E3DAC9]/20 rounded text-[#E3DAC9]">
+      {customer.kundennummer}
+    </span>
+  </div>
+  <div>
+    <span className="font-medium">Passwort:</span> {customer.passwort || "Nicht gesetzt"}
+  </div>
+  <div>
+    <span className="font-medium">Zugewiesene Formulare:</span>{" "}
+    {customer.assignedForms ? customer.assignedForms.length : 0}
+  </div>
+  <div>
+    <span className="font-medium">Ausgefüllte Formulare:</span>{" "}
+    {customer.ausgefuellteformulare ? customer.ausgefuellteformulare.length : 0}
+  </div>
+</div>
                             {customer.category && customer.category.length > 0 && (
                               <div className="mt-2">
                                 <span className="font-medium text-white">Kategorien:</span>
@@ -3988,81 +4398,156 @@ useEffect(() => {
 
         {/* Categories Tab */}
         {activeTab === "categories" && (
-          <div className="space-y-6">
-            {/* Create Category */}
-            <div className="bg-[rgba(227,218,201,0.1)] shadow overflow-hidden sm:rounded-lg">
-              <div className="px-4 py-5 sm:px-6 bg-[#E3DAC9]/20">
-                <h2 className="text-lg leading-6 font-medium text-white">Neue Kategorie erstellen</h2>
-              </div>
-              <div className="border-t border-gray-700 px-4 py-5 sm:px-6">
-                <div className="flex space-x-3">
-                  <input
-                    type="text"
-                    value={newCategoryName}
-                    onChange={(e) => setNewCategoryName(e.target.value)}
-                    placeholder="Kategoriename"
-                    className="flex-1 bg-[rgba(227,218,201,0.1)] border border-gray-700 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-[#E3DAC9] focus:border-[#E3DAC9]"
-                  />
-                  <button
-                    onClick={handleCreateCategory}
-                    className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-black bg-[#E3DAC9] hover:bg-[#E3DAC9]/80"
-                  >
-                    Erstellen
-                  </button>
-                </div>
-              </div>
-            </div>
+  <div className="space-y-6">
+    {/* Kategorie-Aktionen */}
+    <div className="bg-[rgba(227,218,201,0.1)] shadow overflow-hidden sm:rounded-lg">
+      <div className="px-4 py-5 sm:px-6 bg-[#E3DAC9]/20">
+        <h2 className="text-lg leading-6 font-medium text-white">Kategorien verwalten</h2>
+      </div>
+      <div className="border-t border-gray-700 px-4 py-5 sm:px-6">
+        <div className="flex space-x-3">
+          <button
+            onClick={() => setShowCategoryModal(true)}
+            className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-black bg-[#E3DAC9] hover:bg-[#E3DAC9]/80"
+          >
+            + Hauptkategorie
+          </button>
+          <button
+            onClick={() => setShowSubcategoryModal(true)}
+            className="inline-flex items-center px-4 py-2 border border-gray-700 text-sm font-medium rounded-md text-white bg-[rgba(227,218,201,0.1)] hover:bg-[rgba(227,218,201,0.2)]"
+          >
+            + Unterkategorie
+          </button>
+        </div>
+      </div>
+    </div>
 
-            {/* Categories List */}
-            <div className="bg-[rgba(227,218,201,0.1)] shadow overflow-hidden sm:rounded-lg">
-              <div className="px-4 py-5 sm:px-6 bg-[#E3DAC9]/20">
-                <h2 className="text-lg leading-6 font-medium text-white">Kategorien</h2>
-              </div>
-              <div className="border-t border-gray-700">
-                {isLoading ? (
-                  <div className="px-4 py-5 sm:px-6 text-center text-white">Laden...</div>
-                ) : categories.length === 0 ? (
-                  <div className="px-4 py-5 sm:px-6 text-center text-white">Keine Kategorien vorhanden</div>
-                ) : (
-                  <ul className="divide-y divide-gray-700">
-                    {categories.map((category) => {
-                      const customersInCategory = customers.filter(
-                        (customer) => customer.category && customer.category.some((cat) => cat._id === category._id),
-                      )
-                      return (
-                        <li key={category._id} className="px-4 py-5 sm:px-6">
-                          <div className="flex justify-between items-center">
-                            <div>
-                              <h3 className="text-lg leading-6 font-medium text-white">{category.name}</h3>
-                              <p className="mt-1 text-sm text-gray-300">
-                                {customersInCategory.length} Kunde(n) zugeordnet
-                              </p>
-                            </div>
-                          </div>
-                          {customersInCategory.length > 0 && (
-                            <div className="mt-3">
-                              <h4 className="text-sm font-medium text-white mb-2">Zugeordnete Kunden:</h4>
-                              <div className="flex flex-wrap gap-2">
-                                {customersInCategory.map((customer) => (
-                                  <span
-                                    key={customer._id}
-                                    className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-[#E3DAC9] text-black"
-                                  >
-                                    {customer.firstName} {customer.lastName}
+    {/* Hierarchische Kategorienanzeige */}
+    <div className="bg-[rgba(227,218,201,0.1)] shadow overflow-hidden sm:rounded-lg">
+      <div className="px-4 py-5 sm:px-6 bg-[#E3DAC9]/20">
+        <h2 className="text-lg leading-6 font-medium text-white">
+          Kategoriestruktur ({categories.length} Kategorien)
+        </h2>
+      </div>
+      <div className="border-t border-gray-700">
+        {isLoading ? (
+          <div className="px-4 py-5 sm:px-6 text-center text-white">Laden...</div>
+        ) : mainCategories.length === 0 ? (
+          <div className="px-4 py-5 sm:px-6 text-center text-white">
+            Keine Kategorien vorhanden
+          </div>
+        ) : (
+          <ul className="divide-y divide-gray-700">
+            {mainCategories.map((category) => (
+              <li key={category._id} className="px-4 py-5 sm:px-6">
+                {/* Hauptkategorie */}
+                <div className="flex justify-between items-start">
+                  <div className="flex-1">
+                    <div className="flex items-center">
+                      <h3 className="text-lg leading-6 font-bold text-white">
+                        📁 {category.name}
+                      </h3>
+                      <span className="ml-3 inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-[#E3DAC9] text-black">
+                        {category.customerCount || 0} Kunde(n)
+                      </span>
+                      {category.subcategories && category.subcategories.length > 0 && (
+                        <span className="ml-2 inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-900 text-blue-200">
+                          {category.subcategories.length} Unterkategorie(n)
+                        </span>
+                      )}
+                    </div>
+                    {category.description && (
+                      <p className="mt-1 text-sm text-gray-300">{category.description}</p>
+                    )}
+
+                    {/* Aktionen für Hauptkategorie */}
+                    <div className="mt-3 flex space-x-2">
+                      <button
+                        onClick={() => handleShowCategoryDetails(category, false)}
+                        className="inline-flex items-center px-3 py-1 border border-gray-700 text-xs font-medium rounded text-white bg-[rgba(227,218,201,0.1)] hover:bg-[rgba(227,218,201,0.2)]"
+                      >
+                        Kunden anzeigen
+                      </button>
+                      <button
+                        onClick={() => handleShowCategoryDetails(category, true)}
+                        className="inline-flex items-center px-3 py-1 border border-gray-700 text-xs font-medium rounded text-white bg-[rgba(227,218,201,0.1)] hover:bg-[rgba(227,218,201,0.2)]"
+                      >
+                        Inkl. Unterkategorien
+                      </button>
+                      <button
+                        onClick={() => handleEditCategory(category)}
+                        className="inline-flex items-center px-3 py-1 border border-gray-700 text-xs font-medium rounded text-white bg-[rgba(227,218,201,0.1)] hover:bg-[rgba(227,218,201,0.2)]"
+                      >
+                        Bearbeiten
+                      </button>
+                      <button
+                        onClick={() => handleDeleteCategory(category._id)}
+                        className="inline-flex items-center px-3 py-1 border border-red-700 text-xs font-medium rounded text-red-400 bg-red-900/20 hover:bg-red-900/40"
+                      >
+                        Löschen
+                      </button>
+                    </div>
+
+                    {/* Unterkategorien */}
+                    {category.subcategories && category.subcategories.length > 0 && (
+                      <div className="mt-4 ml-6 space-y-3 border-l-2 border-gray-600 pl-4">
+                        {category.subcategories.map((subcat) => (
+                          <div key={subcat._id} className="bg-[rgba(227,218,201,0.05)] p-3 rounded">
+                            <div className="flex justify-between items-start">
+                              <div className="flex-1">
+                                <div className="flex items-center">
+                                  <h4 className="text-md font-medium text-white">
+                                    ↳ {subcat.name}
+                                  </h4>
+                                  <span className="ml-2 inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-[#E3DAC9]/50 text-black">
+                                    {subcat.customerCount || 0} Kunde(n)
                                   </span>
-                                ))}
+                                </div>
+                                {subcat.description && (
+                                  <p className="mt-1 text-xs text-gray-400">{subcat.description}</p>
+                                )}
+                              </div>
+                              <div className="flex space-x-2 ml-4">
+                                <button
+                                  onClick={() => handleShowCategoryDetails(subcat, false)}
+                                  className="inline-flex items-center px-2 py-1 border border-gray-700 text-xs font-medium rounded text-white bg-[rgba(227,218,201,0.1)] hover:bg-[rgba(227,218,201,0.2)]"
+                                >
+                                  Kunden
+                                </button>
+                                <button
+                                  onClick={() => handleEditCategory(subcat)}
+                                  className="inline-flex items-center px-2 py-1 border border-gray-700 text-xs font-medium rounded text-white bg-[rgba(227,218,201,0.1)] hover:bg-[rgba(227,218,201,0.2)]"
+                                >
+                                  Bearbeiten
+                                </button>
+                                <button
+                                  onClick={() => handleMoveCategory(subcat)}
+                                  className="inline-flex items-center px-2 py-1 border border-gray-700 text-xs font-medium rounded text-white bg-[rgba(227,218,201,0.1)] hover:bg-[rgba(227,218,201,0.2)]"
+                                >
+                                  Verschieben
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteCategory(subcat._id)}
+                                  className="inline-flex items-center px-2 py-1 border border-red-700 text-xs font-medium rounded text-red-400 bg-red-900/20 hover:bg-red-900/40"
+                                >
+                                  Löschen
+                                </button>
                               </div>
                             </div>
-                          )}
-                        </li>
-                      )
-                    })}
-                  </ul>
-                )}
-              </div>
-            </div>
-          </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ul>
         )}
+      </div>
+    </div>
+  </div>
+)}
       </main>
       {/* E-Mail Modal */}
       {showEmailModal && emailCustomer && (
@@ -4290,6 +4775,373 @@ useEffect(() => {
           </div>
         </div>
       )}
+      {showCategoryModal && (
+  <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+    <div className="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-gray-800">
+      <div className="mt-3">
+        <div className="flex justify-between items-center mb-4">
+          <h3 className="text-lg font-medium text-white">Hauptkategorie erstellen</h3>
+          <button
+            onClick={() => {
+              setShowCategoryModal(false)
+              setNewCategoryName("")
+              setNewCategoryDescription("")
+            }}
+            className="text-gray-400 hover:text-white"
+          >
+            <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-white mb-2">Name *</label>
+            <input
+              type="text"
+              value={newCategoryName}
+              onChange={(e) => setNewCategoryName(e.target.value)}
+              placeholder="z.B. Privatkunden"
+              className="w-full bg-[rgba(227,218,201,0.1)] border border-gray-700 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-[#E3DAC9] focus:border-[#E3DAC9]"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-white mb-2">Beschreibung</label>
+            <textarea
+              value={newCategoryDescription}
+              onChange={(e) => setNewCategoryDescription(e.target.value)}
+              placeholder="Optionale Beschreibung"
+              rows={3}
+              className="w-full bg-[rgba(227,218,201,0.1)] border border-gray-700 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-[#E3DAC9] focus:border-[#E3DAC9]"
+            />
+          </div>
+          <div className="flex space-x-3">
+            <button
+              onClick={handleCreateMainCategory}
+              className="flex-1 inline-flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-black bg-[#E3DAC9] hover:bg-[#E3DAC9]/80"
+            >
+              Erstellen
+            </button>
+            <button
+              onClick={() => {
+                setShowCategoryModal(false)
+                setNewCategoryName("")
+                setNewCategoryDescription("")
+              }}
+              className="flex-1 inline-flex justify-center py-2 px-4 border border-gray-700 text-sm font-medium rounded-md text-white bg-[rgba(227,218,201,0.1)] hover:bg-[rgba(227,218,201,0.2)]"
+            >
+              Abbrechen
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+)}
+
+{/* Unterkategorie erstellen Modal */}
+{showSubcategoryModal && (
+  <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+    <div className="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-gray-800">
+      <div className="mt-3">
+        <div className="flex justify-between items-center mb-4">
+          <h3 className="text-lg font-medium text-white">Unterkategorie erstellen</h3>
+          <button
+            onClick={() => {
+              setShowSubcategoryModal(false)
+              setNewCategoryName("")
+              setNewCategoryDescription("")
+              setParentCategoryForNew(null)
+            }}
+            className="text-gray-400 hover:text-white"
+          >
+            <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-white mb-2">Übergeordnete Kategorie *</label>
+            <select
+              value={parentCategoryForNew || ""}
+              onChange={(e) => setParentCategoryForNew(e.target.value || null)}
+              className="w-full bg-[rgba(227,218,201,0.1)] border border-gray-700 rounded-md shadow-sm py-2 px-3 text-black focus:outline-none focus:ring-[#E3DAC9] focus:border-[#E3DAC9]"
+            >
+              <option value="">Wählen Sie eine Kategorie</option>
+              {mainCategories.map((cat) => (
+                <option key={cat._id} value={cat._id}>
+                  {cat.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-white mb-2">Name *</label>
+            <input
+              type="text"
+              value={newCategoryName}
+              onChange={(e) => setNewCategoryName(e.target.value)}
+              placeholder="z.B. Selbstständige"
+              className="w-full bg-[rgba(227,218,201,0.1)] border border-gray-700 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-[#E3DAC9] focus:border-[#E3DAC9]"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-white mb-2">Beschreibung</label>
+            <textarea
+              value={newCategoryDescription}
+              onChange={(e) => setNewCategoryDescription(e.target.value)}
+              placeholder="Optionale Beschreibung"
+              rows={3}
+              className="w-full bg-[rgba(227,218,201,0.1)] border border-gray-700 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-[#E3DAC9] focus:border-[#E3DAC9]"
+            />
+          </div>
+          <div className="flex space-x-3">
+            <button
+              onClick={handleCreateSubcategory}
+              className="flex-1 inline-flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-black bg-[#E3DAC9] hover:bg-[#E3DAC9]/80"
+            >
+              Erstellen
+            </button>
+            <button
+              onClick={() => {
+                setShowSubcategoryModal(false)
+                setNewCategoryName("")
+                setNewCategoryDescription("")
+                setParentCategoryForNew(null)
+              }}
+              className="flex-1 inline-flex justify-center py-2 px-4 border border-gray-700 text-sm font-medium rounded-md text-white bg-[rgba(227,218,201,0.1)] hover:bg-[rgba(227,218,201,0.2)]"
+            >
+              Abbrechen
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+)}
+
+{/* Kategorie bearbeiten Modal */}
+{showEditCategoryModal && editingCategory && (
+  <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+    <div className="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-gray-800">
+      <div className="mt-3">
+        <div className="flex justify-between items-center mb-4">
+          <h3 className="text-lg font-medium text-white">Kategorie bearbeiten</h3>
+          <button
+            onClick={() => {
+              setShowEditCategoryModal(false)
+              setEditingCategory(null)
+              setNewCategoryName("")
+              setNewCategoryDescription("")
+            }}
+            className="text-gray-400 hover:text-white"
+          >
+            <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-white mb-2">Name *</label>
+            <input
+              type="text"
+              value={newCategoryName}
+              onChange={(e) => setNewCategoryName(e.target.value)}
+              className="w-full bg-[rgba(227,218,201,0.1)] border border-gray-700 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-[#E3DAC9] focus:border-[#E3DAC9]"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-white mb-2">Beschreibung</label>
+            <textarea
+              value={newCategoryDescription}
+              onChange={(e) => setNewCategoryDescription(e.target.value)}
+              rows={3}
+              className="w-full bg-[rgba(227,218,201,0.1)] border border-gray-700 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-[#E3DAC9] focus:border-[#E3DAC9]"
+            />
+          </div>
+          <div className="flex space-x-3">
+            <button
+              onClick={handleSaveEditCategory}
+              className="flex-1 inline-flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-black bg-[#E3DAC9] hover:bg-[#E3DAC9]/80"
+            >
+              Speichern
+            </button>
+            <button
+              onClick={() => {
+                setShowEditCategoryModal(false)
+                setEditingCategory(null)
+                setNewCategoryName("")
+                setNewCategoryDescription("")
+              }}
+              className="flex-1 inline-flex justify-center py-2 px-4 border border-gray-700 text-sm font-medium rounded-md text-white bg-[rgba(227,218,201,0.1)] hover:bg-[rgba(227,218,201,0.2)]"
+            >
+              Abbrechen
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+)}
+
+{/* Kategorie verschieben Modal */}
+{showMoveCategoryModal && movingCategory && (
+  <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+    <div className="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-gray-800">
+      <div className="mt-3">
+        <div className="flex justify-between items-center mb-4">
+          <h3 className="text-lg font-medium text-white">Kategorie verschieben</h3>
+          <button
+            onClick={() => {
+              setShowMoveCategoryModal(false)
+              setMovingCategory(null)
+            }}
+            className="text-gray-400 hover:text-white"
+          >
+            <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+        <div className="space-y-4">
+          <p className="text-sm text-gray-300">
+            Verschiebe "{movingCategory.name}" zu einer anderen Kategorie oder mache sie zur Hauptkategorie.
+          </p>
+          <div className="space-y-2">
+            <button
+              onClick={() => handleSaveMoveCategory(null)}
+              className="w-full text-left px-4 py-2 bg-[rgba(227,218,201,0.1)] border border-gray-700 rounded-md text-white hover:bg-[rgba(227,218,201,0.2)]"
+            >
+              → Zur Hauptkategorie machen
+            </button>
+            {mainCategories
+              .filter(cat => cat._id !== movingCategory._id)
+              .map((cat) => (
+                <button
+                  key={cat._id}
+                  onClick={() => handleSaveMoveCategory(cat._id)}
+                  className="w-full text-left px-4 py-2 bg-[rgba(227,218,201,0.1)] border border-gray-700 rounded-md text-white hover:bg-[rgba(227,218,201,0.2)]"
+                >
+                  → Unter "{cat.name}"
+                </button>
+              ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+)}
+
+{/* Kategorie-Details Modal */}
+{showCategoryDetails && (
+  <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+    <div className="relative top-20 mx-auto p-5 border w-11/12 max-w-2xl shadow-lg rounded-md bg-gray-800">
+      <div className="mt-3">
+        <div className="flex justify-between items-center mb-4">
+          <div>
+            <h3 className="text-lg font-medium text-white">{showCategoryDetails.name}</h3>
+            <p className="text-sm text-gray-400">
+              {showCategoryDetails.includesSubcategories 
+                ? "Inkl. Unterkategorien" 
+                : "Nur direkte Zuordnung"}
+            </p>
+          </div>
+          <button
+            onClick={() => setShowCategoryDetails(null)}
+            className="text-gray-400 hover:text-white"
+          >
+            <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+        <div className="space-y-4">
+          <p className="text-white">
+            {showCategoryDetails.customers.length} Kunde(n) in dieser Kategorie
+          </p>
+          {showCategoryDetails.customers.length > 0 ? (
+            <ul className="divide-y divide-gray-700 max-h-96 overflow-y-auto">
+              {showCategoryDetails.customers.map((customer) => (
+                <li key={customer._id} className="py-3">
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <p className="text-white font-medium">
+                        {customer.firstName} {customer.lastName}
+                      </p>
+                      <p className="text-sm text-gray-400">{customer.email}</p>
+                      {customer.category && customer.category.length > 1 && (
+                        <div className="mt-1 flex flex-wrap gap-1">
+                          {customer.category.map(cat => (
+                            <span key={cat._id} className="inline-flex items-center px-2 py-0.5 rounded text-xs bg-[#E3DAC9]/30 text-white">
+                              {cat.parentCategory && `${cat.parentCategory.name} / `}{cat.name}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-gray-400">Keine Kunden in dieser Kategorie</p>
+          )}
+        </div>
+      </div>
+    </div>
+  </div>
+)}
+
+{/* Kategorie-Zuweisung Modal (angepasst für Hierarchie) */}
+{showAssignCategoryModal && (
+  <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+    <div className="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-gray-800">
+      <div className="mt-3">
+        <div className="flex justify-between items-center mb-4">
+          <h3 className="text-lg font-medium text-white">Kategorie zuweisen</h3>
+          <button
+            onClick={() => {
+              setShowAssignCategoryModal(false)
+              setCustomerToAssignCategory(null)
+            }}
+            className="text-gray-400 hover:text-white"
+          >
+            <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+        <div className="space-y-3 max-h-96 overflow-y-auto">
+          {mainCategories.map((category) => (
+            <div key={category._id} className="space-y-2">
+              <button
+                onClick={() => handleAssignCategory(category._id)}
+                className="w-full text-left px-4 py-2 bg-[rgba(227,218,201,0.1)] border border-gray-700 rounded-md text-white hover:bg-[rgba(227,218,201,0.2)] font-medium"
+              >
+                📁 {category.name}
+              </button>
+              {category.subcategories && category.subcategories.length > 0 && (
+                <div className="ml-6 space-y-1">
+                  {category.subcategories.map((subcat) => (
+                    <button
+                      key={subcat._id}
+                      onClick={() => handleAssignCategory(subcat._id)}
+                      className="w-full text-left px-3 py-1.5 bg-[rgba(227,218,201,0.05)] border border-gray-700 rounded-md text-gray-300 hover:bg-[rgba(227,218,201,0.1)] text-sm"
+                    >
+                      ↳ {subcat.name}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  </div>
+)}
     </div>
   )
 }
