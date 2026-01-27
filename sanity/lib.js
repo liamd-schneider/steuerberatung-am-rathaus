@@ -491,6 +491,14 @@ export async function submitCompletedForm(userId, form, answers, fileUploads = {
       type: "form_completed",
       relatedDocumentId: userId,
       relatedDocumentType: "userForm",
+      // Zusätzliche Daten für E-Mail
+      customerData: {
+        firstName: user.firstName,
+        lastName: user.lastName,
+        email: user.email,
+        kundennummer: user.kundennummer,
+        formTitle: form.title || "Formular"
+      }
     })
 
     return result

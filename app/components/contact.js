@@ -222,6 +222,162 @@ export default function ContactForm() {
     `
   }
 
+  // HTML E-Mail Template für Admin-Benachrichtigungen bei Kontaktanfragen
+  const generateAdminContactInquiryEmailHTML = (inquiry) => {
+    const formatDate = (dateString) => {
+      const date = new Date(dateString)
+      return date.toLocaleDateString("de-DE", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      })
+    }
+
+    return `
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Neue Kontaktanfrage</title>
+</head>
+<body style="margin: 0; padding: 0; font-family: Arial, Helvetica, sans-serif; background-color: #f5f5f5; color: #333333;">
+  <table border="0" cellpadding="0" cellspacing="0" width="100%" style="border-collapse: collapse;">
+    <tr>
+      <td>
+        <!-- Header -->
+        <table border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #E3DAC9; padding: 20px 0;">
+          <tr>
+            <td align="center">
+              <table border="0" cellpadding="0" cellspacing="0" width="600" style="border-collapse: collapse;">
+                <tr>
+                  <td align="left" style="padding: 0 20px;">
+                    <h1 style="color: #333333; font-size: 24px; margin: 0;">Neue Kontaktanfrage</h1>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+        </table>
+
+        <!-- Content -->
+        <table border="0" cellpadding="0" cellspacing="0" width="100%">
+          <tr>
+            <td align="center" style="padding: 40px 0;">
+              <table border="0" cellpadding="0" cellspacing="0" width="600" style="background-color: #ffffff; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+                <tr>
+                  <td style="padding: 40px 30px;">
+                    <h2 style="color: #333333; font-size: 20px; margin: 0 0 20px 0;">Neue Kontaktanfrage eingegangen</h2>
+                    
+                    <table border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #f9f7f3; border-radius: 6px; margin: 30px 0;">
+                      <tr>
+                        <td style="padding: 20px;">
+                          <h3 style="color: #333333; font-size: 18px; margin: 0 0 15px 0;">Anfrage-Details:</h3>
+                          <table border="0" cellpadding="0" cellspacing="0" width="100%">
+                            <tr>
+                              <td width="150" style="color: #747171; font-size: 14px; padding: 5px 0;">Support-Nummer:</td>
+                              <td style="color: #333333; font-size: 14px; font-weight: bold; padding: 5px 0;">${inquiry.supportNumber}</td>
+                            </tr>
+                            <tr>
+                              <td width="150" style="color: #747171; font-size: 14px; padding: 5px 0;">Name:</td>
+                              <td style="color: #333333; font-size: 14px; padding: 5px 0;">${inquiry.firstName} ${inquiry.lastName}</td>
+                            </tr>
+                            <tr>
+                              <td width="150" style="color: #747171; font-size: 14px; padding: 5px 0;">E-Mail:</td>
+                              <td style="color: #333333; font-size: 14px; padding: 5px 0;">${inquiry.email}</td>
+                            </tr>
+                            ${inquiry.phone ? `
+                            <tr>
+                              <td width="150" style="color: #747171; font-size: 14px; padding: 5px 0;">Telefon:</td>
+                              <td style="color: #333333; font-size: 14px; padding: 5px 0;">${inquiry.phone}</td>
+                            </tr>
+                            ` : ''}
+                            <tr>
+                              <td width="150" style="color: #747171; font-size: 14px; padding: 5px 0;">Betreff:</td>
+                              <td style="color: #333333; font-size: 14px; padding: 5px 0;">${inquiry.subject}</td>
+                            </tr>
+                            <tr>
+                              <td width="150" style="color: #747171; font-size: 14px; padding: 5px 0; vertical-align: top;">Nachricht:</td>
+                              <td style="color: #333333; font-size: 14px; padding: 5px 0;">${inquiry.message}</td>
+                            </tr>
+                            <tr>
+                              <td width="150" style="color: #747171; font-size: 14px; padding: 5px 0;">Datum:</td>
+                              <td style="color: #333333; font-size: 14px; padding: 5px 0;">${formatDate(new Date().toISOString())}</td>
+                            </tr>
+                          </table>
+                        </td>
+                      </tr>
+                    </table>
+                    
+                    <table border="0" cellpadding="0" cellspacing="0">
+                      <tr>
+                        <td style="background-color: #E3DAC9; border-radius: 4px;">
+                          <a href="https://steuerberatung-am-rathaus.vercel.app/admin" target="_blank" style="display: inline-block; padding: 12px 24px; color: #333333; font-size: 16px; font-weight: bold; text-decoration: none;">Zum Admin-Dashboard</a>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+        </table>
+
+        <!-- Footer -->
+        <table border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #747171; padding: 30px 0;">
+          <tr>
+            <td align="center">
+              <table border="0" cellpadding="0" cellspacing="0" width="600" style="border-collapse: collapse;">
+                <tr>
+                  <td align="center" style="color: #ffffff; font-size: 14px; padding: 0 20px;">
+                    <p style="margin: 0 0 10px 0;">Steuerberatung am Rathaus - Admin Benachrichtigung</p>
+                    <p style="margin: 20px 0 0 0; font-size: 12px; color: #E3DAC9;">© 2025 Steuerberatung am Rathaus. Alle Rechte vorbehalten.</p>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+    `
+  }
+
+  // Admin-Benachrichtigungs-E-Mail senden
+  const sendAdminNotificationEmail = async (htmlContent, subject) => {
+    if (!emailConfigured) {
+      console.warn("E-Mail-Service ist nicht konfiguriert")
+      return
+    }
+
+    try {
+      const savedConfig = localStorage.getItem("emailjs-config")
+      const config = savedConfig ? JSON.parse(savedConfig) : emailConfig
+
+      // Hole Admin-E-Mail aus localStorage oder verwende eine Standard-E-Mail
+      const adminEmail = localStorage.getItem("admin-email") || "stb-am-rathaus@email.de"
+
+      const templateParams = {
+        to_email: adminEmail,
+        to_name: "Admin",
+        from_name: "Steuerberatung am Rathaus System",
+        subject: subject,
+        html_content: htmlContent,
+      }
+
+      await emailjs.send(config.serviceId, config.templateId, templateParams, config.publicKey)
+
+      console.log(`Admin-Benachrichtigung erfolgreich an ${adminEmail} gesendet`)
+    } catch (error) {
+      console.error("Fehler beim Senden der Admin-Benachrichtigung:", error)
+    }
+  }
+
   // E-Mail senden Funktion
   const sendContactConfirmationEmail = async (inquiry) => {
     if (!emailConfigured) {
@@ -319,6 +475,24 @@ export default function ContactForm() {
         ...submissionData,
         _id: createdInquiry._id,
       })
+
+      // Send admin notification email
+      if (emailConfigured) {
+        const adminEmailHTML = generateAdminContactInquiryEmailHTML({
+          firstName: formData.firstName,
+          lastName: formData.lastName,
+          email: formData.email,
+          phone: formData.phone,
+          subject: formData.subject,
+          message: formData.message,
+          supportNumber: supportNumber
+        })
+        
+        await sendAdminNotificationEmail(
+          adminEmailHTML,
+          `Neue Kontaktanfrage: ${formData.subject}`
+        )
+      }
 
       // Show success message and support number
       setSuccess(`Ihre Nachricht wurde erfolgreich versendet. Ihre Support-Nummer: ${supportNumber}. Eine Bestätigungs-E-Mail wurde an ${formData.email} gesendet.`)

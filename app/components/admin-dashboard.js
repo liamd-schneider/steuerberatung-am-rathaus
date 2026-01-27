@@ -22,6 +22,7 @@ import {
   assignCustomerToCategory,
   removeCustomerFromCategory,
   generatePassword,
+  parseFormText,
 } from "@/sanity/lib"
 import { PREDEFINED_FORMS } from "@/sanity/predefined-forms"
 import emailjs from "@emailjs/browser"
@@ -144,6 +145,349 @@ const handleResetCategoryFilter = () => {
   setSelectedCategoryFilter(null)
   setSelectedSubcategoryFilters([])
   setIncludeSubcategoriesInFilter(false)
+}
+
+// Admin-Benachrichtigung: Neuer Kunde
+const generateAdminNewCustomerEmailHTML = (customer) => {
+  return `
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Neuer Kunde erstellt</title>
+</head>
+<body style="margin: 0; padding: 0; font-family: Arial, Helvetica, sans-serif; background-color: #f5f5f5; color: #333333;">
+<table border="0" cellpadding="0" cellspacing="0" width="100%" style="border-collapse: collapse;">
+<tr>
+<td>
+<table border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #E3DAC9; padding: 20px 0;">
+<tr>
+<td align="center">
+<table border="0" cellpadding="0" cellspacing="0" width="600" style="border-collapse: collapse;">
+<tr>
+<td align="left" style="padding: 0 20px;">
+<h1 style="color: #333333; font-size: 24px; margin: 0;">Steuerberatung am Rathaus - Admin Benachrichtigung</h1>
+</td>
+</tr>
+</table>
+</td>
+</tr>
+</table>
+<table border="0" cellpadding="0" cellspacing="0" width="100%">
+<tr>
+<td align="center" style="padding: 40px 0;">
+<table border="0" cellpadding="0" cellspacing="0" width="600" style="background-color: #ffffff; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+<tr>
+<td style="padding: 40px 30px;">
+<h2 style="color: #333333; font-size: 20px; margin: 0 0 20px 0;">✅ Neuer Kunde erstellt</h2>
+<p style="color: #555555; font-size: 16px; line-height: 1.5; margin: 0 0 20px 0;">Ein neuer Kunde wurde im System erstellt:</p>
+<table border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #f9f7f3; border-radius: 6px; margin: 30px 0;">
+<tr>
+<td style="padding: 20px;">
+<table border="0" cellpadding="0" cellspacing="0" width="100%">
+<tr>
+<td width="150" style="color: #747171; font-size: 14px; padding: 5px 0;">Name:</td>
+<td style="color: #333333; font-size: 14px; font-weight: bold; padding: 5px 0;">${customer.firstName} ${customer.lastName}</td>
+</tr>
+<tr>
+<td width="150" style="color: #747171; font-size: 14px; padding: 5px 0;">E-Mail:</td>
+<td style="color: #333333; font-size: 14px; padding: 5px 0;">${customer.email}</td>
+</tr>
+<tr>
+<td width="150" style="color: #747171; font-size: 14px; padding: 5px 0;">Kundennummer:</td>
+<td style="color: #333333; font-size: 14px; padding: 5px 0;">${customer.kundennummer}</td>
+</tr>
+<tr>
+<td width="150" style="color: #747171; font-size: 14px; padding: 5px 0;">Passwort:</td>
+<td style="color: #333333; font-size: 14px; padding: 5px 0;">${customer.passwort}</td>
+</tr>
+<tr>
+<td width="150" style="color: #747171; font-size: 14px; padding: 5px 0;">Erstellt am:</td>
+<td style="color: #333333; font-size: 14px; padding: 5px 0;">${new Date().toLocaleString('de-DE')}</td>
+</tr>
+</table>
+</td>
+</tr>
+</table>
+<table border="0" cellpadding="0" cellspacing="0" style="margin: 25px 0;">
+<tr>
+<td style="background-color: #E3DAC9; border-radius: 4px; text-align: center;">
+<a href="https://steuerberatung-am-rathaus.vercel.app/admin" target="_blank" style="display: inline-block; padding: 12px 30px; color: #333333; font-size: 16px; font-weight: bold; text-decoration: none;">Zum Admin-Dashboard</a>
+</td>
+</tr>
+</table>
+</td>
+</tr>
+</table>
+</td>
+</tr>
+</table>
+<table border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #747171; padding: 30px 0;">
+<tr>
+<td align="center">
+<table border="0" cellpadding="0" cellspacing="0" width="600" style="border-collapse: collapse;">
+<tr>
+<td align="center" style="color: #ffffff; font-size: 14px; padding: 0 20px;">
+<p style="margin: 0 0 10px 0;">Steuerberatung am Rathaus</p>
+<p style="margin: 0 0 10px 0;">Rathausplatz 1, 12345 Musterstadt</p>
+<p style="margin: 0 0 10px 0;">Tel: +49 020414066389 | E-Mail: stb-am-rathaus@email.de</p>
+<p style="margin: 20px 0 0 0; font-size: 12px; color: #E3DAC9;">©2025 Steuerberatung am Rathaus. Alle Rechte vorbehalten.</p>
+</td>
+</tr>
+</table>
+</td>
+</tr>
+</table>
+</td>
+</tr>
+</table>
+</body>
+</html>
+  `
+}
+
+// Admin-Benachrichtigung: Formular ausgefüllt
+const generateAdminFormCompletedEmailHTML = (customer, formTitle) => {
+  return `
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Formular ausgefüllt</title>
+</head>
+<body style="margin: 0; padding: 0; font-family: Arial, Helvetica, sans-serif; background-color: #f5f5f5; color: #333333;">
+<table border="0" cellpadding="0" cellspacing="0" width="100%" style="border-collapse: collapse;">
+<tr>
+<td>
+<table border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #E3DAC9; padding: 20px 0;">
+<tr>
+<td align="center">
+<table border="0" cellpadding="0" cellspacing="0" width="600" style="border-collapse: collapse;">
+<tr>
+<td align="left" style="padding: 0 20px;">
+<h1 style="color: #333333; font-size: 24px; margin: 0;">Steuerberatung am Rathaus - Admin Benachrichtigung</h1>
+</td>
+</tr>
+</table>
+</td>
+</tr>
+</table>
+<table border="0" cellpadding="0" cellspacing="0" width="100%">
+<tr>
+<td align="center" style="padding: 40px 0;">
+<table border="0" cellpadding="0" cellspacing="0" width="600" style="background-color: #ffffff; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+<tr>
+<td style="padding: 40px 30px;">
+<h2 style="color: #333333; font-size: 20px; margin: 0 0 20px 0;">📋 Formular ausgefüllt</h2>
+<p style="color: #555555; font-size: 16px; line-height: 1.5; margin: 0 0 20px 0;">Ein Kunde hat ein Formular ausgefüllt:</p>
+<table border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #f9f7f3; border-radius: 6px; margin: 30px 0;">
+<tr>
+<td style="padding: 20px;">
+<table border="0" cellpadding="0" cellspacing="0" width="100%">
+<tr>
+<td width="150" style="color: #747171; font-size: 14px; padding: 5px 0;">Kunde:</td>
+<td style="color: #333333; font-size: 14px; font-weight: bold; padding: 5px 0;">${customer.firstName} ${customer.lastName}</td>
+</tr>
+<tr>
+<td width="150" style="color: #747171; font-size: 14px; padding: 5px 0;">E-Mail:</td>
+<td style="color: #333333; font-size: 14px; padding: 5px 0;">${customer.email}</td>
+</tr>
+<tr>
+<td width="150" style="color: #747171; font-size: 14px; padding: 5px 0;">Kundennummer:</td>
+<td style="color: #333333; font-size: 14px; padding: 5px 0;">${customer.kundennummer}</td>
+</tr>
+<tr>
+<td width="150" style="color: #747171; font-size: 14px; padding: 5px 0;">Formular:</td>
+<td style="color: #333333; font-size: 14px; padding: 5px 0;">${formTitle}</td>
+</tr>
+<tr>
+<td width="150" style="color: #747171; font-size: 14px; padding: 5px 0;">Ausgefüllt am:</td>
+<td style="color: #333333; font-size: 14px; padding: 5px 0;">${new Date().toLocaleString('de-DE')}</td>
+</tr>
+</table>
+</td>
+</tr>
+</table>
+<table border="0" cellpadding="0" cellspacing="0" style="margin: 25px 0;">
+<tr>
+<td style="background-color: #E3DAC9; border-radius: 4px; text-align: center;">
+<a href="https://steuerberatung-am-rathaus.vercel.app/admin" target="_blank" style="display: inline-block; padding: 12px 30px; color: #333333; font-size: 16px; font-weight: bold; text-decoration: none;">Zum Admin-Dashboard</a>
+</td>
+</tr>
+</table>
+</td>
+</tr>
+</table>
+</td>
+</tr>
+</table>
+<table border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #747171; padding: 30px 0;">
+<tr>
+<td align="center">
+<table border="0" cellpadding="0" cellspacing="0" width="600" style="border-collapse: collapse;">
+<tr>
+<td align="center" style="color: #ffffff; font-size: 14px; padding: 0 20px;">
+<p style="margin: 0 0 10px 0;">Steuerberatung am Rathaus</p>
+<p style="margin: 0 0 10px 0;">Rathausplatz 1, 12345 Musterstadt</p>
+<p style="margin: 0 0 10px 0;">Tel: +49 020414066389 | E-Mail: stb-am-rathaus@email.de</p>
+<p style="margin: 20px 0 0 0; font-size: 12px; color: #E3DAC9;">©2025 Steuerberatung am Rathaus. Alle Rechte vorbehalten.</p>
+</td>
+</tr>
+</table>
+</td>
+</tr>
+</table>
+</td>
+</tr>
+</table>
+</body>
+</html>
+  `
+}
+
+// Admin-Benachrichtigung: Neue Kontaktanfrage
+const generateAdminContactInquiryEmailHTML = (inquiry) => {
+  return `
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Neue Kontaktanfrage</title>
+</head>
+<body style="margin: 0; padding: 0; font-family: Arial, Helvetica, sans-serif; background-color: #f5f5f5; color: #333333;">
+<table border="0" cellpadding="0" cellspacing="0" width="100%" style="border-collapse: collapse;">
+<tr>
+<td>
+<table border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #E3DAC9; padding: 20px 0;">
+<tr>
+<td align="center">
+<table border="0" cellpadding="0" cellspacing="0" width="600" style="border-collapse: collapse;">
+<tr>
+<td align="left" style="padding: 0 20px;">
+<h1 style="color: #333333; font-size: 24px; margin: 0;">Steuerberatung am Rathaus - Admin Benachrichtigung</h1>
+</td>
+</tr>
+</table>
+</td>
+</tr>
+</table>
+<table border="0" cellpadding="0" cellspacing="0" width="100%">
+<tr>
+<td align="center" style="padding: 40px 0;">
+<table border="0" cellpadding="0" cellspacing="0" width="600" style="background-color: #ffffff; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+<tr>
+<td style="padding: 40px 30px;">
+<h2 style="color: #333333; font-size: 20px; margin: 0 0 20px 0;">📧 Neue Kontaktanfrage</h2>
+<p style="color: #555555; font-size: 16px; line-height: 1.5; margin: 0 0 20px 0;">Eine neue Kontaktanfrage wurde eingereicht:</p>
+<table border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #f9f7f3; border-radius: 6px; margin: 30px 0;">
+<tr>
+<td style="padding: 20px;">
+<table border="0" cellpadding="0" cellspacing="0" width="100%">
+<tr>
+<td width="150" style="color: #747171; font-size: 14px; padding: 5px 0;">Name:</td>
+<td style="color: #333333; font-size: 14px; font-weight: bold; padding: 5px 0;">${inquiry.firstName} ${inquiry.lastName}</td>
+</tr>
+<tr>
+<td width="150" style="color: #747171; font-size: 14px; padding: 5px 0;">E-Mail:</td>
+<td style="color: #333333; font-size: 14px; padding: 5px 0;">${inquiry.email}</td>
+</tr>
+<tr>
+<td width="150" style="color: #747171; font-size: 14px; padding: 5px 0;">Telefon:</td>
+<td style="color: #333333; font-size: 14px; padding: 5px 0;">${inquiry.phone || 'Nicht angegeben'}</td>
+</tr>
+<tr>
+<td width="150" style="color: #747171; font-size: 14px; padding: 5px 0;">Support-Nr:</td>
+<td style="color: #333333; font-size: 14px; padding: 5px 0;">${inquiry.supportNumber}</td>
+</tr>
+<tr>
+<td width="150" style="color: #747171; font-size: 14px; padding: 5px 0; vertical-align: top;">Betreff:</td>
+<td style="color: #333333; font-size: 14px; padding: 5px 0;">${inquiry.subject}</td>
+</tr>
+<tr>
+<td width="150" style="color: #747171; font-size: 14px; padding: 5px 0; vertical-align: top;">Nachricht:</td>
+<td style="color: #333333; font-size: 14px; padding: 5px 0; white-space: pre-wrap;">${inquiry.message}</td>
+</tr>
+<tr>
+<td width="150" style="color: #747171; font-size: 14px; padding: 5px 0;">Eingegangen am:</td>
+<td style="color: #333333; font-size: 14px; padding: 5px 0;">${new Date().toLocaleString('de-DE')}</td>
+</tr>
+</table>
+</td>
+</tr>
+</table>
+<table border="0" cellpadding="0" cellspacing="0" style="margin: 25px 0;">
+<tr>
+<td style="background-color: #E3DAC9; border-radius: 4px; text-align: center;">
+<a href="https://steuerberatung-am-rathaus.vercel.app/admin" target="_blank" style="display: inline-block; padding: 12px 30px; color: #333333; font-size: 16px; font-weight: bold; text-decoration: none;">Zum Admin-Dashboard</a>
+</td>
+</tr>
+</table>
+</td>
+</tr>
+</table>
+</td>
+</tr>
+</table>
+<table border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #747171; padding: 30px 0;">
+<tr>
+<td align="center">
+<table border="0" cellpadding="0" cellspacing="0" width="600" style="border-collapse: collapse;">
+<tr>
+<td align="center" style="color: #ffffff; font-size: 14px; padding: 0 20px;">
+<p style="margin: 0 0 10px 0;">Steuerberatung am Rathaus</p>
+<p style="margin: 0 0 10px 0;">Rathausplatz 1, 12345 Musterstadt</p>
+<p style="margin: 0 0 10px 0;">Tel: +49 020414066389 | E-Mail: stb-am-rathaus@email.de</p>
+<p style="margin: 20px 0 0 0; font-size: 12px; color: #E3DAC9;">©2025 Steuerberatung am Rathaus. Alle Rechte vorbehalten.</p>
+</td>
+</tr>
+</table>
+</td>
+</tr>
+</table>
+</td>
+</tr>
+</table>
+</body>
+</html>
+  `
+}
+
+// Zentrale Admin-E-Mail-Versand-Funktion
+const sendAdminNotificationEmail = async (emailHTML, subject) => {
+  const context = 'AdminNotification'
+  
+  if (!emailConfigured) {
+    console.warn("E-Mail-Service ist nicht konfiguriert - Admin-Benachrichtigung wird nicht gesendet")
+    return { success: false, reason: 'not_configured' }
+  }
+
+  try {
+    const adminEmail = "default.lsdev.stb.a.rth@gmail.com"
+    
+    const templateParams = {
+      to_email: adminEmail,
+      to_name: "Admin",
+      from_name: "Steuerberatung am Rathaus System",
+      subject: subject,
+      html_content: emailHTML,
+    }
+
+    await emailjs.send(
+      emailConfig.serviceId, 
+      emailConfig.templateId, 
+      templateParams, 
+      emailConfig.publicKey
+    )
+
+    console.log(`✅ Admin-Benachrichtigung erfolgreich an ${adminEmail} gesendet: ${subject}`)
+    return { success: true }
+  } catch (error) {
+    console.error(`❌ Fehler beim Senden der Admin-Benachrichtigung:`, error)
+    return { success: false, error: error.message }
+  }
 }
 
 // 2. Füge die createDynamicQuestionLabel Funktion hinzu:
@@ -784,29 +1128,62 @@ const handleRemoveFromCategory = async (customerId, categoryId) => {
   }
 
   const handleCreateCustomer = async (e) => {
-    e.preventDefault()
-    setError("")
-    setSuccess("")
-    setIsCreating(true)
+  e.preventDefault()
+  const context = 'CreateCustomer'
+  
+  logInfo(context, 'Starte Kundenerstellung', {
+    firstName: formData.firstName,
+    lastName: formData.lastName,
+    email: formData.email,
+    kundennummer: formData.kundennummer || 'auto-generated'
+  })
+  
+  setError("")
+  setSuccess("")
+  setIsCreating(true)
 
-    try {
-      const generatedPassword = generatePassword()
-      const customerDataWithPassword = {
-        ...formData,
-        passwort: generatedPassword,
-      }
-
-      const result = await createCustomer(customerDataWithPassword)
-      await sendWelcomeEmail({ ...customerDataWithPassword, ...result })
-      setSuccess(`Kunde erfolgreich erstellt und E-Mail gesendet. Passwort: ${generatedPassword}`)
-      setFormData({ firstName: "", lastName: "", email: "" })
-      fetchData()
-    } catch (error) {
-      setError(`Fehler beim Erstellen des Kunden: ${error.message}`)
-    } finally {
-      setIsCreating(false)
+  try {
+    const generatedPassword = generatePassword()
+    const customerDataWithPassword = {
+      ...formData,
+      passwort: generatedPassword,
     }
+
+    logInfo(context, 'Erstelle Kunde in Datenbank')
+    const result = await createCustomer(customerDataWithPassword)
+    logSuccess(context, 'Kunde erfolgreich erstellt', {
+      customerId: result._id,
+      kundennummer: result.kundennummer
+    })
+    
+    const completeCustomerData = { ...customerDataWithPassword, ...result }
+    
+    // Sende Willkommens-E-Mail an Kunde
+    logInfo(context, 'Sende Willkommens-E-Mail an Kunde')
+    await sendWelcomeEmail(completeCustomerData)
+    
+    // Sende Admin-Benachrichtigung
+    logInfo(context, 'Sende Admin-Benachrichtigung')
+    const adminEmailHTML = generateAdminNewCustomerEmailHTML(completeCustomerData)
+    await sendAdminNotificationEmail(
+      adminEmailHTML, 
+      `Neuer Kunde: ${completeCustomerData.firstName} ${completeCustomerData.lastName}`
+    )
+    
+    setSuccess(`Kunde erfolgreich erstellt und E-Mails gesendet. Passwort: ${generatedPassword}`)
+    setFormData({ firstName: "", lastName: "", email: "", kundennummer: "" })
+    
+    logInfo(context, 'Aktualisiere Kundenliste')
+    fetchData()
+    
+    logSuccess(context, 'Kundenerstellung abgeschlossen')
+  } catch (error) {
+    logError(context, 'Fehler beim Erstellen des Kunden', error)
+    setError(`Fehler beim Erstellen des Kunden: ${error.message}`)
+  } finally {
+    setIsCreating(false)
   }
+}
 
   const handleUpdateCustomer = async (e) => {
     e.preventDefault()
@@ -879,34 +1256,59 @@ const handleEditCustomer = (customer) => {
   }
 
   const handleAssignPredefinedForm = async (formText) => {
-    try {
-      await assignFormTextToUser(selectedCustomer, formText)
-      setSuccess("Formular erfolgreich zugewiesen")
-
-      const assignedForms = await getUserAssignedForms(selectedCustomer)
-      setSelectedCustomerForms(assignedForms || [])
-    } catch (error) {
-      setError(`Fehler beim Zuweisen des Formulars: ${error.message}`)
+  try {
+    await assignFormTextToUser(selectedCustomer, formText)
+    
+    // Parse Formular-Titel
+    const parsedForm = parseFormText(formText)
+    const formTitle = parsedForm?.title || "Formular"
+    
+    // Hole Kunden-Daten
+    const customer = customers.find(c => c._id === selectedCustomer)
+    
+    // Sende E-Mail
+    if (customer && emailConfigured) {
+      await sendFormAssignmentEmail(customer, formTitle)
     }
+    
+    setSuccess("Formular erfolgreich zugewiesen und E-Mail gesendet")
+
+    const assignedForms = await getUserAssignedForms(selectedCustomer)
+    setSelectedCustomerForms(assignedForms || [])
+  } catch (error) {
+    setError(`Fehler beim Zuweisen des Formulars: ${error.message}`)
+  }
+}
+const handleAssignCustomForm = async () => {
+  if (!newFormText.trim()) {
+    setError("Bitte geben Sie einen Formulartext ein")
+    return
   }
 
-  const handleAssignCustomForm = async () => {
-    if (!newFormText.trim()) {
-      setError("Bitte geben Sie einen Formulartext ein")
-      return
+  try {
+    await assignFormTextToUser(selectedCustomer, newFormText)
+    
+    // Parse Formular-Titel
+    const parsedForm = parseFormText(newFormText)
+    const formTitle = parsedForm?.title || "Benutzerdefiniertes Formular"
+    
+    // Hole Kunden-Daten
+    const customer = customers.find(c => c._id === selectedCustomer)
+    
+    // Sende E-Mail
+    if (customer && emailConfigured) {
+      await sendFormAssignmentEmail(customer, formTitle)
     }
+    
+    setSuccess("Benutzerdefiniertes Formular erfolgreich zugewiesen und E-Mail gesendet")
+    setNewFormText("")
 
-    try {
-      await assignFormTextToUser(selectedCustomer, newFormText)
-      setSuccess("Benutzerdefiniertes Formular erfolgreich zugewiesen")
-      setNewFormText("")
-
-      const assignedForms = await getUserAssignedForms(selectedCustomer)
-      setSelectedCustomerForms(assignedForms || [])
-    } catch (error) {
-      setError(`Fehler beim Zuweisen des benutzerdefinierten Formulars: ${error.message}`)
-    }
+    const assignedForms = await getUserAssignedForms(selectedCustomer)
+    setSelectedCustomerForms(assignedForms || [])
+  } catch (error) {
+    setError(`Fehler beim Zuweisen des benutzerdefinierten Formulars: ${error.message}`)
   }
+}
 
   const handleRemoveForm = async (formIndex) => {
     try {
@@ -987,9 +1389,122 @@ const handleEditCustomer = (customer) => {
       setError(`Fehler beim Erstellen der Kategorie: ${error.message}`)
     }
   }
+const sendFormAssignmentEmail = async (customer, formTitle) => {
+  if (!emailConfigured) {
+    console.warn("E-Mail-Service ist nicht konfiguriert")
+    return
+  }
 
+  try {
+    const emailHTML = generateFormAssignmentEmailHTML(customer, formTitle)
+
+    const templateParams = {
+      to_email: customer.email,
+      to_name: `${customer.firstName} ${customer.lastName}`,
+      from_name: "Steuerberatung am Rathaus",
+      subject: `Neues Formular zugewiesen: ${formTitle}`,
+      html_content: emailHTML,
+      customer_firstname: customer.firstName,
+      customer_lastname: customer.lastName,
+      form_title: formTitle,
+    }
+
+    await emailjs.send(emailConfig.serviceId, emailConfig.templateId, templateParams, emailConfig.publicKey)
+
+    setSuccess(`E-Mail über Formular-Zuweisung an ${customer.email} gesendet`)
+  } catch (error) {
+    console.error("Fehler beim Senden der E-Mail:", error)
+    setError(`Fehler beim Senden der E-Mail: ${error.message}`)
+  }
+}
  
-
+const generateFormAssignmentEmailHTML = (customer, formTitle) => {
+  return `
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Neues Formular zugewiesen</title>
+</head>
+<body style="margin: 0; padding: 0; font-family: Arial, Helvetica, sans-serif; background-color: #f5f5f5; color: #333333;">
+<table border="0" cellpadding="0" cellspacing="0" width="100%" style="border-collapse: collapse;">
+<tr>
+<td>
+<table border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #E3DAC9; padding: 20px 0;">
+<tr>
+<td align="center">
+<table border="0" cellpadding="0" cellspacing="0" width="600" style="border-collapse: collapse;">
+<tr>
+<td align="left" style="padding: 0 20px;">
+<h1 style="color: #333333; font-size: 24px; margin: 0;">Steuerberatung am Rathaus</h1>
+</td>
+</tr>
+</table>
+</td>
+</tr>
+</table>
+<table border="0" cellpadding="0" cellspacing="0" width="100%">
+<tr>
+<td align="center" style="padding: 40px 0;">
+<table border="0" cellpadding="0" cellspacing="0" width="600" style="background-color: #ffffff; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+<tr>
+<td style="padding: 40px 30px;">
+<h2 style="color: #333333; font-size: 20px; margin: 0 0 20px 0;">Neues Formular zugewiesen</h2>
+<p style="color: #555555; font-size: 16px; line-height: 1.5; margin: 0 0 20px 0;">Sehr geehrte/r ${customer.firstName} ${customer.lastName},</p>
+<p style="color: #555555; font-size: 16px; line-height: 1.5; margin: 0 0 20px 0;">Ihnen wurde ein neues Formular zugewiesen, das Sie bitte ausfüllen möchten:</p>
+<table border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #f9f7f3; border-radius: 6px; margin: 30px 0;">
+<tr>
+<td style="padding: 20px;">
+<h3 style="color: #333333; font-size: 18px; margin: 0 0 10px 0;">📋 ${formTitle}</h3>
+<p style="color: #747171; font-size: 14px; margin: 0;">Bitte loggen Sie sich ein, um das Formular auszufüllen.</p>
+</td>
+</tr>
+</table>
+<table border="0" cellpadding="0" cellspacing="0" style="margin: 25px 0;">
+<tr>
+<td style="background-color: #E3DAC9; border-radius: 4px; text-align: center;">
+<a href="https://steuerberatung-am-rathaus.vercel.app/login" target="_blank" style="display: inline-block; padding: 12px 30px; color: #333333; font-size: 16px; font-weight: bold; text-decoration: none;">Jetzt anmelden</a>
+</td>
+</tr>
+</table>
+<p style="color: #555555; font-size: 16px; line-height: 1.5; margin: 0 0 20px 0;">Bei Fragen stehen wir Ihnen selbstverständlich jederzeit zur Verfügung.</p>
+<table border="0" cellpadding="0" cellspacing="0">
+<tr>
+<td style="background-color: #E3DAC9; border-radius: 4px;">
+<a href="https://steuerberatung-am-rathaus.vercel.app/#kontakt" target="_blank" style="display: inline-block; padding: 12px 24px; color: #333333; font-weight: bold; text-decoration: none;">Kontakt</a>
+</td>
+</tr>
+</table>
+</td>
+</tr>
+</table>
+</td>
+</tr>
+</table>
+<table border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #747171; padding: 30px 0;">
+<tr>
+<td align="center">
+<table border="0" cellpadding="0" cellspacing="0" width="600" style="border-collapse: collapse;">
+<tr>
+<td align="center" style="color: #ffffff; font-size: 14px; padding: 0 20px;">
+<p style="margin: 0 0 10px 0;">Steuerberatung am Rathaus</p>
+<p style="margin: 0 0 10px 0;">Rathausplatz 1, 12345 Musterstadt</p>
+<p style="margin: 0 0 10px 0;">Tel: +49 020414066389 | E-Mail: stb-am-rathaus@email.de</p>
+<p style="margin: 20px 0 0 0; font-size: 12px; color: #E3DAC9;">©2025 Steuerberatung am Rathaus und Liam Schneider. Alle Rechte vorbehalten.</p>
+</td>
+</tr>
+</table>
+</td>
+</tr>
+</table>
+</td>
+</tr>
+</table>
+</body>
+</html>
+  `
+}
  
 
   const handleSaveEmailConfig = () => {

@@ -567,3 +567,19 @@ export async function getCustomersByMultipleCategoriesAction(categoryIds, matchA
     return []
   }
 }
+
+// Admin-Benachrichtigungs-E-Mails senden
+export async function sendAdminNotificationForEvent(eventType, data) {
+  try {
+    // Diese Funktion wird vom Client aufgerufen, wenn eine Benachrichtigung erstellt wird
+    // Sie sendet eine E-Mail an den Admin
+    
+    // Hinweis: Die eigentliche E-Mail-Versendung erfolgt im AdminDashboard
+    // Diese Action dient nur als Trigger/Reminder
+    
+    return { success: true }
+  } catch (error) {
+    console.error("Error in admin notification:", error)
+    return { success: false, error: error.message }
+  }
+}
